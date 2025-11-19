@@ -4,62 +4,10 @@
 
 本仓库使用ROS2来实现Sim-to-sim和Sim-to-real全流程，故需在电脑上先安装好ROS2，如在Ubuntu22.04上安装[ROS2 Humble](https://docs.ros.org/en/humble/index.html)
 ```mermaid
-graph TD
-    A[Low-Level State]
-    B[Low-Level Node]
-    C[Low-Level Command]
-    
-    B -->|Publish| A
-    B -->|Subscribe| C
-
-    J["Deep Robotics RL Deploy"]
-    K["Cmd_vel"]
-
-    I["sdk_rl_deploy"]
-
-    D[Developer Node]
-    E[Perception Node]
-    F[Vision]
-    G[Lidar]
-    
-    E -->|Publish| F
-    E -->|Publish| G
-
-
-    %% Connections - Built-in RL (Orange)
-    J -->|Subscribe| A
-    J -->|Publish| C
-    J -->|Subscribe| K
-
-    %% Connections - sdk_rl_deploy (Green)
-    I -->|Subscribe| A
-    I -->|Publish| C
-    I -->|Subscribe| K
-
-    %% General Connections
-    D -->|Subscribe| F
-    D -->|Subscribe| G
-    D -->|Subscribe| A
-    D -->|Publish| K
-    D -->|Publish| C
-
-    %% Styling
-    classDef orange fill:#FFD580,stroke:#F4A261,stroke-width:2px,color:#000;
-    classDef green fill:#90EE90,stroke:#228B22,stroke-width:2px,color:#000;
-    classDef red fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:#000;
-    classDef future fill:#DDA0DD,stroke:#9932CC,stroke-width:2px,color:#000;
-    classDef note fill:#FFFF99,stroke:#FFCC00,stroke-width:2px,color:#000;
-
-    class A,B,C,J,K orange
-    class I green
-    class D red
-    class E,F,G,H future
-    class SwitchNote note
-
-    %% Layout hint for mutual exclusion
-    J -.->|Switch Excludes| I
-    D -.->|Switch Excludes| I
-    D -.->|Switch Excludes| J
+graph LR
+    A["/rl_deploy"] -->|/JOINTS_CMD| B["/mujoco_simulation"]
+    A -->|/IMU_DATA| B
+    B -->|/JOINTS_DATA| A
 ```
 ```bash
 # ros2 topic list

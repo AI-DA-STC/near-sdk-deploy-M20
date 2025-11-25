@@ -73,10 +73,10 @@ graph LR
 
 ```bash
 pip install "numpy < 2.0" mujoco
-git clone https://github.com/DeepRoboticsLab/M20_rl_deploy.git
+git clone https://github.com/DeepRoboticsLab/sdk_deploy.git
 
 # 编译
-cd M20_rl_deploy
+cd sdk_deploy
 source /opt/ros/<ros-distro>/setup.bash
 colcon build --packages-up-to rl_deploy --cmake-args -DBUILD_PLATFORM=x86
 ```
@@ -104,7 +104,7 @@ python3 src/M20_sdk_deploy/interface/robot/simulation/mujoco_simulation_ros2.py
 ## 仿真-实际
 此过程和仿真-仿真几乎一模一样，只需要添加连wifi传输数据步骤，然后修改编译指令即可。目前默认实机操控为keyboard键盘模式，后续我们将会添加手柄控制模式，敬请期待。
 
-请先下载 [drdds-ros2-msgs](https://drive.google.com/file/d/1NrMsYSY5AM0vYoYBc0Tc3BEbndN0ckos/view?usp=sharing) 并安装
+请先使用手柄设置中的OTA升级功能将硬件升级为1.1.7版本
 
 ```bash
 # 电脑和手柄均连接机器狗WiFi
@@ -112,17 +112,23 @@ python3 src/M20_sdk_deploy/interface/robot/simulation/mujoco_simulation_ros2.py
 # WiFi密码为 12345678 (一般为这个，如有问题联系技术支持)
 
 # scp传输文件 (打开本地电脑终端) 密码为' (单引号)
-scp -r ~/M20_rl_deploy user@10.21.31.103:~/
+scp -r ~/sdk_deploy/src user@10.21.31.103:~/sdk_deploy/
 
 # ssh连接机器狗运动主机以远程开发
 ssh user@10.21.31.103
-cd M20_rl_deploy
+cd sdk_deploy
 source /opt/ros/foxy/setup.bash
 colcon build --packages-select rl_deploy --cmake-args -DBUILD_PLATFORM=arm 
 
 
-sudo su 
-sudo dpkg -i drdds-ros2-msgs.v1.0.4+96b382.arm64.2511141335.deb
+sudo su # Root
+source /opt/ros/foxy/setup.bash #source ROS2 env
+source /opt/robot/scripts/setup_ros2.sh
+ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 200 # /200 is /JOINTS_DATA topic frequency, recommended below 500 Hz
+
+# Run
+source install/setup.bash
+ros2 run rl_deploy rl_deploy
   
 # 退出sdk模式：
 ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 0

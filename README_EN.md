@@ -70,10 +70,10 @@ graph LR
 
 ```bash
 pip install "numpy < 2.0" mujoco
-git clone https://github.com/DeepRoboticsLab/M20_rl_deploy.git
+git clone https://github.com/DeepRoboticsLab/sdk_deploy.git
 
 # Compile
-cd M20_rl_deploy
+cd sdk_deploy
 source /opt/ros/<ros-distro>/setup.bash
 colcon build --packages-up-to rl_deploy --cmake-args -DBUILD_PLATFORM=x86
 ```
@@ -103,7 +103,7 @@ python3 src/M20_sdk_deploy/interface/robot/simulation/mujoco_simulation_ros2.py
 This process is almost identical to simulation-simulation. You only need to add the step of connecting to Wi-Fi to transfer data, and then modify the compilation instructions. The default control mode is currently set to keyboard mode. We will be adding controller support in future updates. Stay tuned.
 
 
-Download drdds-ros2-msgs packages from [here](https://drive.google.com/file/d/1Nvxot_LOKMvLAr608kFtZ28gfsgA_dsx/view?usp=sharing) and install
+Please first use the OTA upgrade function in the handle settings to upgrade the hardware to version 1.1.7.
 
 ```bash
 
@@ -112,16 +112,16 @@ Download drdds-ros2-msgs packages from [here](https://drive.google.com/file/d/1N
 # Passward: 12345678 (If wrong, contact technical support)
 
 # scp to transfer files to quadruped (open a terminal on your local computer) password is ' (a single quote)
-scp -r ~/M20_rl_deploy user@10.21.31.103:~/
+scp -r ~/sdk_deploy/src user@10.21.31.103:~/sdk_deploy
 
 # ssh connect for remote development, 
 ssh user@10.21.31.103
-cd M20_rl_deploy
+cd sdk_deploy
+source /opt/ros/foxy/setup.bash #source ROS2 env
 colcon build --packages-select rl_deploy --cmake-args -DBUILD_PLATFORM=arm
 
 
 sudo su # Root
-sudo dpkg -i drdds-ros2-msgs.v1.0.2+.arm64.2510291519.deb
 source /opt/ros/foxy/setup.bash #source ROS2 env
 source /opt/robot/scripts/setup_ros2.sh
 ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 200 # /200 is /JOINTS_DATA topic frequency, recommended below 500 Hz

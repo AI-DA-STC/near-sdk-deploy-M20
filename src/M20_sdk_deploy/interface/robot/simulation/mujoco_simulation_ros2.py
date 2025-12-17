@@ -202,8 +202,12 @@ class MuJoCoSimulationNode(Node):
 
     def _publish_robot_state(self, step: int):
         # ----- IMU -----
-        q_world = self.data.sensordata[:4]  # quaternion
-        rpy = self.quaternion_to_euler(q_world)
+        q_world = self.data.sensordata[:4]  # quaternion (w, x, y, z) in MuJoCo convention
+        rpy_rad = self.quaternion_to_euler(q_world)  # returns [roll, pitch, yaw] in radians
+
+        # Convert to degrees
+        rpy_deg = [angle * (180.0 / 3.141592653589793) for angle in rpy_rad]
+
         body_acc = self.data.sensordata[4:7]
         angvel_b = self.data.sensordata[7:10]  # body frame
 
@@ -217,9 +221,9 @@ class MuJoCoSimulationNode(Node):
         stamp.nanosec = nanosec
         imu_msg.header.stamp = stamp
         imu_msg.data = ImuDataValue()
-        imu_msg.data.roll = float(rpy[0])
-        imu_msg.data.pitch = float(rpy[1])
-        imu_msg.data.yaw = float(rpy[2])
+        imu_msg.data.roll = float(rpy_deg[0])
+        imu_msg.data.pitch = float(rpy_deg[1])
+        imu_msg.data.yaw = float(rpy_deg[2])
         imu_msg.data.omega_x = float(angvel_b[0])
         imu_msg.data.omega_y = float(angvel_b[1])
         imu_msg.data.omega_z = float(angvel_b[2])

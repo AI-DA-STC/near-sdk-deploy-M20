@@ -10,6 +10,7 @@
 
   <depend>rclcpp</depend>
   <depend>drdds</depend>
+  <depend>libevdev-dev</depend>
 
   <exec_depend>ament_cmake</exec_depend>
 

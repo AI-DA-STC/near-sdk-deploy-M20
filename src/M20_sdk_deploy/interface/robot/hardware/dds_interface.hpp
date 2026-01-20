@@ -86,6 +86,8 @@ protected:
             if (cnt == 10000) {
                 std::cout << data_updated_ << std::endl;
                 std::cout << "joint data update is not finished\n";
+                std::cout << "Breaking initialization after timeout - continuing anyway\n";
+                break;
             }
         }
         for (int i = 1; i < dof_num_; i += 4) {

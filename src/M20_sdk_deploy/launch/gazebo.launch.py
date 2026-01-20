@@ -81,9 +81,10 @@ def generate_launch_description():
     # Remove unwanted entities from the world
     remove_franka = remove_entity_action("Edifice", "Panda")
     remove_table = remove_entity_action("Edifice", "Reflective table")
+    remove_mecanum_lift = remove_entity_action("Edifice", "Mecanum lift")
     
     # Wait 8 seconds to remove entities, then spawn robot at 10 seconds
-    delayed_remove = TimerAction(period=8.0, actions=[remove_franka, remove_table])
+    delayed_remove = TimerAction(period=8.0, actions=[remove_franka, remove_table, remove_mecanum_lift])
     delayed_spawn = TimerAction(period=12.0, actions=[spawn_robot])
 
     # 3) Bridge joint states from Gazebo to ROS2
@@ -91,7 +92,7 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/world/Edifice/model/M20/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model'
+            '/world/Edifice/model/M20/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model'
         ],
         remappings=[
             ('/world/Edifice/model/M20/joint_state', '/joint_states')
@@ -104,7 +105,7 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[gz.msgs.IMU'
+            '/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
         remappings=[
             ('/model/M20/link/base_link/sensor/imu_sensor/imu', '/imu/data')
@@ -127,7 +128,7 @@ def generate_launch_description():
                 package='ros_gz_bridge',
                 executable='parameter_bridge',
                 arguments=[
-                    f'/model/M20/joint/{joint_name}/cmd_force@std_msgs/msg/Float64]gz.msgs.Double'
+                    f'/model/M20/joint/{joint_name}/cmd_force@std_msgs/msg/Float64]ignition.msgs.Double'
                 ],
                 output='screen'
             )

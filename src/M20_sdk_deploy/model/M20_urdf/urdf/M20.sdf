@@ -1,5 +1,8 @@
 <sdf version='1.9'>
   <model name='M20'>
+    <!-- Enable collision with other objects, disable self-collision -->
+    <self_collide>false</self_collide>
+    
     <link name='base_link'>
       <inertial>
         <pose>0.00355105878308153 0.0016507579200937 -0.00346462146571654 0 0 0</pose>
@@ -20,6 +23,21 @@
             <size>0.75 0.09 0.14</size>
           </box>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.8</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <collision name='base_link_collision_1'>
         <pose>0 0.045 0 0 1.570796326794897 0</pose>
@@ -29,6 +47,21 @@
             <radius>0.070000000000000007</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.8</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <collision name='base_link_collision_2'>
         <pose>0 -0.045 0 0 1.570796326794897 0</pose>
@@ -38,6 +71,21 @@
             <radius>0.070000000000000007</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.8</mu>
+              <mu2>0.8</mu2>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <visual name='base_link_visual'>
         <pose>0 0 0 0 0 0</pose>
@@ -52,6 +100,37 @@
           <ambient>0.941176 0.941176 0.941176 1</ambient>
         </material>
       </visual>
+      <!-- IMU Sensor -->
+      <sensor name='imu_sensor' type='imu'>
+        <always_on>true</always_on>
+        <update_rate>200</update_rate>
+        <visualize>false</visualize>
+        <topic>/model/M20/link/base_link/sensor/imu_sensor/imu</topic>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type='none'/>
+            </x>
+            <y>
+              <noise type='none'/>
+            </y>
+            <z>
+              <noise type='none'/>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type='none'/>
+            </x>
+            <y>
+              <noise type='none'/>
+            </y>
+            <z>
+              <noise type='none'/>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
     </link>
     <joint name='fl_hipx_joint' type='revolute'>
       <pose relative_to='base_link'>0.3141 0.06850000000000001 0 0 0 0</pose>
@@ -274,6 +353,22 @@
             <radius>0.089999999999999997</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+              <fdir1>0 0 1</fdir1>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <visual name='fl_wheel_visual'>
         <pose>0 0 0 0 0 0</pose>
@@ -510,6 +605,22 @@
             <radius>0.089999999999999997</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+              <fdir1>0 0 1</fdir1>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <visual name='fr_wheel_visual'>
         <pose>0 0 0 0 0 0</pose>
@@ -746,6 +857,22 @@
             <radius>0.089999999999999997</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+              <fdir1>0 0 1</fdir1>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <visual name='hl_wheel_visual'>
         <pose>0 0 0 0 0 0</pose>
@@ -982,6 +1109,22 @@
             <radius>0.089999999999999997</radius>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+              <fdir1>0 0 1</fdir1>
+            </ode>
+          </friction>
+          <contact>
+            <ode>
+              <kp>1e6</kp>
+              <kd>100</kd>
+              <min_depth>0.001</min_depth>
+            </ode>
+          </contact>
+        </surface>
       </collision>
       <visual name='hr_wheel_visual'>
         <pose>0 0 0 0 0 0</pose>
@@ -997,5 +1140,84 @@
         </material>
       </visual>
     </link>
+    
+    <!-- ===== PLUGINS ===== -->
+    
+    <!-- Contact Plugin for collision detection -->
+    <plugin filename="ignition-gazebo-contact-system" name="gz::sim::systems::Contact"/>
+    
+    <!-- IMU Sensor Plugin -->
+    <plugin filename="ignition-gazebo-imu-system" name="gz::sim::systems::Imu"/>
+    
+    <!-- Joint State Publisher Plugin -->
+    <plugin filename="ignition-gazebo-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+      <joint_name>fl_hipx_joint</joint_name>
+      <joint_name>fl_hipy_joint</joint_name>
+      <joint_name>fl_knee_joint</joint_name>
+      <joint_name>fl_wheel_joint</joint_name>
+      <joint_name>fr_hipx_joint</joint_name>
+      <joint_name>fr_hipy_joint</joint_name>
+      <joint_name>fr_knee_joint</joint_name>
+      <joint_name>fr_wheel_joint</joint_name>
+      <joint_name>hl_hipx_joint</joint_name>
+      <joint_name>hl_hipy_joint</joint_name>
+      <joint_name>hl_knee_joint</joint_name>
+      <joint_name>hl_wheel_joint</joint_name>
+      <joint_name>hr_hipx_joint</joint_name>
+      <joint_name>hr_hipy_joint</joint_name>
+      <joint_name>hr_knee_joint</joint_name>
+      <joint_name>hr_wheel_joint</joint_name>
+    </plugin>
+    
+    <!-- Apply Joint Force Plugin for each joint -->
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fl_hipx_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fl_hipy_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fl_knee_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fl_wheel_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fr_hipx_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fr_hipy_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fr_knee_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>fr_wheel_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hl_hipx_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hl_hipy_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hl_knee_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hl_wheel_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hr_hipx_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hr_hipy_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hr_knee_joint</joint_name>
+    </plugin>
+    <plugin filename="ignition-gazebo-apply-joint-force-system" name="gz::sim::systems::ApplyJointForce">
+      <joint_name>hr_wheel_joint</joint_name>
+    </plugin>
+    
   </model>
 </sdf>

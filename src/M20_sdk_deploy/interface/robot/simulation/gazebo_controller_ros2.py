@@ -286,7 +286,7 @@ class GazeboControllerNode(Node):
         joints_msg.data.joints_data = [JointData() for _ in range(self.dof_num)]
         for i in range(self.dof_num):
             joint = joints_msg.data.joints_data[i]
-            joint.name = [32, 32, 32, 32]  # Dummy name (four spaces)
+            joint.name = b'    '  # Dummy name (four spaces as bytes)
             joint.data_id = 0
             joint.status_word = 1  # Normal
             joint.position = float(pub_pos[i])

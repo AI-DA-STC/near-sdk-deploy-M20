@@ -1,1 +1,0 @@
-{"hypothesisId": "B", "location": "gazebo_controller_ros2.py:__init__", "message": "Gazebo Controller node initialized", "data": {"lidar_front_topic": "/LIDAR/FRONT", "lidar_rear_topic": "/LIDAR/REAR"}, "timestamp": 1768898434525, "sessionId": "debug-session"}

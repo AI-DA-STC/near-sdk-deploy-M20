@@ -2,6 +2,20 @@
 
 This repository uses ROS2 to implement the entire Sim-to-sim and Sim-to-real workflow. Therefore, ROS2 must first be installed on your computer, such as installing [ROS2 Humble](https://docs.ros.org/en/humble/index.html) on Ubuntu 22.04. We've also released an introduction [video](https://www.youtube.com/watch?v=FNaxsDBtD7A), please check it out! Please go through the whole process on a Ubuntu system.
 
+![](/assets/simulation.png)
+
+## Hardware Requirements
+
+**Tested Configuration:**
+- GPU: NVIDIA RTX 5090 (Aftershock PC)
+- System Memory: 64GB RAM
+- VRAM: 25GB
+
+**Observed Resource Usage (Multi-Robot Simulation):**
+- VRAM: ~2.2GB
+- GPU Utilization: ~16-20%
+- Memory Utilization: ~5-6%
+
 ## Prerequisites
 
 ### ROS2 Humble

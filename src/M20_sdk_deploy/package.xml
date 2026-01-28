@@ -11,6 +11,9 @@
   <depend>rclcpp</depend>
   <depend>drdds</depend>
   <depend>libevdev-dev</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>sensor_msgs</depend>
+  <depend>slam_toolbox</depend>
 
   <exec_depend>ament_cmake</exec_depend>
 

@@ -1,149 +1,158 @@
-[English](./README_EN.md)
+## Overview
 
-[![Discord](https://img.shields.io/badge/-Discord-5865F2?style=flat&logo=Discord&logoColor=white)](https://discord.gg/gdM9mQutC8)
+This repository uses ROS2 to implement the entire Sim-to-sim and Sim-to-real workflow. Therefore, ROS2 must first be installed on your computer, such as installing [ROS2 Humble](https://docs.ros.org/en/humble/index.html) on Ubuntu 22.04. We've also released an introduction [video](https://www.youtube.com/watch?v=FNaxsDBtD7A), please check it out! Please go through the whole process on a Ubuntu system.
 
-## 总览
+## Prerequisites
 
-本仓库使用ROS2来实现Sim-to-sim和Sim-to-real全流程，故需在电脑上先安装好ROS2，如在Ubuntu22.04上安装[ROS2 Humble](https://docs.ros.org/en/humble/index.html)。我们还公布了[教学视频](https://www.bilibili.com/video/BV17S2VBJEN2)，欢迎大家观看。注意：请全程在Ubuntu系统上进行
-```mermaid
-graph LR
-    A["/rl_deploy"] -->|/JOINTS_CMD| B["/mujoco_simulation"]
-    B -->|/IMU_DATA| A
-    B -->|/JOINTS_DATA| A
-```
+### ROS2 Humble
+Install ROS2 Humble on Ubuntu 22.04:
 ```bash
-# ros2 topic list
-/BATTERY_DATA
-/IMU_DATA
-/JOINTS_CMD
-/JOINTS_DATA
-/parameter_events
-/rosout
-
-
-# ros2 node info /mujoco_simulation 
-/mujoco_simulation
-  Subscribers:
-    /JOINTS_CMD: drdds/msg/JointsDataCmd
-  Publishers:
-    /IMU_DATA: drdds/msg/ImuData
-    /JOINTS_DATA: drdds/msg/JointsData
-    /parameter_events: rcl_interfaces/msg/ParameterEvent
-    /rosout: rcl_interfaces/msg/Log
-  Service Servers:
-    /mujoco_simulation/describe_parameters: rcl_interfaces/srv/DescribeParameters
-    /mujoco_simulation/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
-    /mujoco_simulation/get_parameters: rcl_interfaces/srv/GetParameters
-    /mujoco_simulation/list_parameters: rcl_interfaces/srv/ListParameters
-    /mujoco_simulation/set_parameters: rcl_interfaces/srv/SetParameters
-    /mujoco_simulation/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
-  Service Clients:
-
-  Action Servers:
-
-  Action Clients:
-
-
-# ros2 node info /rl_deploy 
-/rl_deploy
-  Subscribers:
-    /BATTERY_DATA: drdds/msg/BatteryData
-    /IMU_DATA: drdds/msg/ImuData
-    /JOINTS_DATA: drdds/msg/JointsData
-    /parameter_events: rcl_interfaces/msg/ParameterEvent
-  Publishers:
-    /JOINTS_CMD: drdds/msg/JointsDataCmd
-    /parameter_events: rcl_interfaces/msg/ParameterEvent
-    /rosout: rcl_interfaces/msg/Log
-  Service Servers:
-    /rl_deploy/describe_parameters: rcl_interfaces/srv/DescribeParameters
-    /rl_deploy/get_parameter_types: rcl_interfaces/srv/GetParameterTypes
-    /rl_deploy/get_parameters: rcl_interfaces/srv/GetParameters
-    /rl_deploy/list_parameters: rcl_interfaces/srv/ListParameters
-    /rl_deploy/set_parameters: rcl_interfaces/srv/SetParameters
-    /rl_deploy/set_parameters_atomically: rcl_interfaces/srv/SetParametersAtomically
-  Service Clients:
-
-  Action Servers:
-
-  Action Clients:
-
+# Follow official instructions at:
+# https://docs.ros.org/en/humble/Installation.html
 ```
 
-## 二次开发
-欢迎大家对我们的代码进行二次开发，无论是发现了bug还是优化了我们的训练代码，都可以提出一个pull request，我们会去研究审核并尝试融入我们的代码库。
+### Gazebo Ignition Fortress
+Install Gazebo Ignition Fortress for simulation:
+```bash
+# Install Gazebo Ignition Fortress
+sudo apt-get update
+sudo apt-get install ignition-fortress
 
-## 仿真-仿真
+# Install ROS2-Gazebo bridge packages
+sudo apt-get install ros-humble-ros-gz-sim ros-humble-ros-gz-bridge ros-humble-ros-gz-interfaces
+```
 
+## Sim-to-sim (Gazebo Ignition Fortress)
+
+### Build
 
 ```bash
-pip install "numpy < 2.0" mujoco
 git clone https://github.com/DeepRoboticsLab/sdk_deploy.git
 
-# 编译
+# Compile
 cd sdk_deploy
-source /opt/ros/<ros-distro>/setup.bash
+source /opt/ros/humble/setup.bash
 colcon build --packages-up-to rl_deploy --cmake-args -DBUILD_PLATFORM=x86
 ```
 
-```bash
-# 运行 (打开两个终端)
-# 终端1 
-export ROS_DOMAIN_ID=1
-source install/setup.bash
-ros2 run rl_deploy rl_deploy
+### Single Robot
 
-# 终端2 
-export ROS_DOMAIN_ID=1
+```bash
+# Terminal 1: Launch simulation
 source install/setup.bash
-python3 src/M20_sdk_deploy/interface/robot/simulation/mujoco_simulation_ros2.py
+ros2 launch rl_deploy gazebo.launch.py
+
+# Terminal 2: Control robot (use namespace)
+source install/setup.bash
+ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20
 ```
 
-### 操控(终端2)
-<span style="color: red;">**注意:**</span>
-> - 可以将仿真器窗口设为始终位于最上层，方便可视化
-> - 当机器狗站起来时，有可能在仿真中会自碰撞卡住，这不是bug，请再尝试一次即可
-> - z： 机器狗站立进入默认状态
-> - c： 机器狗站立进入rl控制状态
-> - wasd：前后左右
-> - qe：顺逆时针旋转
-
-## 仿真-实际
-此过程和仿真-仿真几乎一模一样，只需要添加连wifi传输数据步骤，然后修改编译指令即可。目前默认实机操控为keyboard键盘模式，后续我们将会添加手柄控制模式，敬请期待。
-
-请先使用手柄设置中的OTA升级功能将硬件升级为1.1.7版本
+### Multi-Robot
 
 ```bash
-# 电脑和手柄均连接机器狗WiFi
-# WiFi名称为 M20********
-# WiFi密码为 12345678 (一般为这个，如有问题联系技术支持)
+# Terminal 1: Launch simulation with both robots
+source install/setup.bash
+ros2 launch rl_deploy gazebo_multi_robot.launch.py
 
-# scp传输文件 (打开本地电脑终端) 密码为' (单引号)
-scp -r ~/sdk_deploy/src user@10.21.31.103:~/sdk_deploy/
+# Terminal 2: Control M20_A
+source install/setup.bash
+ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20_A
 
-# ssh连接机器狗运动主机以远程开发
+# Terminal 3: Control M20_B
+source install/setup.bash
+ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20_B
+```
+
+### Topic Structure (Multi-Robot)
+
+The system uses two layers of topics:
+
+**Gazebo Bridge Topics** (standard ROS2 messages from Gazebo):
+- `/M20_X/joint_states` - `sensor_msgs/msg/JointState`
+- `/M20_X/IMU` - `sensor_msgs/msg/Imu`
+- `/M20_X/LIDAR/FRONT` - Front LIDAR sensor
+- `/M20_X/LIDAR/REAR` - Rear LIDAR sensor
+
+**DDS Format Topics** (custom messages for rl_deploy controller):
+- `/M20_X/JOINTS_DATA` - `drdds/msg/JointsData` (converted from joint_states)
+- `/M20_X/IMU_DATA` - `drdds/msg/ImuData` (converted from IMU)
+- `/M20_X/JOINTS_CMD` - `drdds/msg/JointsDataCmd` (commands to Gazebo)
+
+The `gazebo_controller_ros2.py` node bridges between these formats.
+
+```bash
+# Robot M20_A topics
+/M20_A/joint_states       # Gazebo -> Bridge (sensor_msgs/JointState)
+/M20_A/IMU                # Gazebo -> Bridge (sensor_msgs/Imu)
+/M20_A/LIDAR/FRONT        # Gazebo -> ROS2 (sensor_msgs/LaserScan)
+/M20_A/LIDAR/REAR         # Gazebo -> ROS2 (sensor_msgs/LaserScan)
+/M20_A/JOINTS_DATA        # Bridge -> rl_deploy (drdds/JointsData)
+/M20_A/IMU_DATA           # Bridge -> rl_deploy (drdds/ImuData)
+/M20_A/JOINTS_CMD         # rl_deploy -> Gazebo (drdds/JointsDataCmd)
+
+# Robot M20_B topics
+/M20_B/joint_states       # Gazebo -> Bridge (sensor_msgs/JointState)
+/M20_B/IMU                # Gazebo -> Bridge (sensor_msgs/Imu)
+/M20_B/LIDAR/FRONT        # Gazebo -> ROS2 (sensor_msgs/LaserScan)
+/M20_B/LIDAR/REAR         # Gazebo -> ROS2 (sensor_msgs/LaserScan)
+/M20_B/JOINTS_DATA        # Bridge -> rl_deploy (drdds/JointsData)
+/M20_B/IMU_DATA           # Bridge -> rl_deploy (drdds/ImuData)
+/M20_B/JOINTS_CMD         # rl_deploy -> Gazebo (drdds/JointsDataCmd)
+
+# Joint force command topics (Gazebo internal)
+/model/M20_A/joint/<joint_name>/cmd_force
+/model/M20_B/joint/<joint_name>/cmd_force
+```
+
+### Keyboard controls
+
+<span style="color: red;">**Note:**</span>
+> - When the robot dog stands up, it may become stuck due to self-collision in the simulation. This is not a bug; please try again.
+> - **z**: default position
+> - **c**: rl control default position
+> - **wasd**: forward/leftward/backward/rightward
+> - **q,e**: clockwise/counter clockwise
+
+
+# Sim-to-Real (not tested)
+This process is almost identical to simulation-simulation. You only need to add the step of connecting to Wi-Fi to transfer data, and then modify the compilation instructions. The default control mode is currently set to keyboard mode. We will be adding controller support in future updates. Stay tuned.
+
+
+Please first use the OTA upgrade function in the handle settings to upgrade the hardware to version 1.1.7.
+
+```bash
+
+# computer and gamepad should both connect to WiFi
+# WiFi: M20********
+# Passward: 12345678 (If wrong, contact technical support)
+
+# scp to transfer files to quadruped (open a terminal on your local computer) password is ' (a single quote)
+scp -r ~/sdk_deploy/src user@10.21.31.103:~/sdk_deploy
+
+# ssh connect for remote development, 
 ssh user@10.21.31.103
 cd sdk_deploy
-source /opt/ros/foxy/setup.bash
-colcon build --packages-select rl_deploy --cmake-args -DBUILD_PLATFORM=arm 
+source /opt/ros/foxy/setup.bash #source ROS2 env
+colcon build --packages-select rl_deploy --cmake-args -DBUILD_PLATFORM=arm
 
 
 sudo su # Root
 source /opt/ros/foxy/setup.bash #source ROS2 env
 source /opt/robot/scripts/setup_ros2.sh
-ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 200 # 200 是 /JOINTS_DATA 话题的发布频率，建议设置在 500 Hz 以下,该数值只能是 1000 的因数。
+ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 200 # /200 is /JOINTS_DATA topic frequency, recommended below 500 Hz. This value can only be factors of 1000.
+
 # Run
 source install/setup.bash
 ros2 run rl_deploy rl_deploy
-  
-# 退出sdk模式：
+
+# exit sdk mode：
 ros2 service call /SDK_MODE drdds/srv/StdSrvInt32 command:\ 0
 
-# 键盘输入状态切换
-# 注意：当机器狗站起来时，有可能在仿真中会自碰撞卡住，这不是bug，请再尝试一次即可
-- z： 机器狗站立进入默认状态 
-- c： 机器狗站立进入rl控制状态
-- wasd：前后左右
-- qe：顺逆时针旋转
+# keyboard control
+Note: When the robot dog stands up, it may become stuck due to self-collision in the simulation. This is not a bug; please try again.
+- z： default position
+- c： rl control default position
+- wasd：forward/leftward/backward/rightward
+- qe：clockwise/counter clockwise
 ```
 

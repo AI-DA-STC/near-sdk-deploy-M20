@@ -102,6 +102,7 @@
       </visual>
       <!-- IMU Sensor -->
       <sensor name='imu_sensor' type='imu'>
+        <pose>0.0632 -0.0268 -0.0435 0 0 0</pose>
         <always_on>true</always_on>
         <update_rate>200</update_rate>
         <visualize>false</visualize>
@@ -130,6 +131,114 @@
             </z>
           </linear_acceleration>
         </imu>
+      </sensor>
+      
+      <!-- Front Camera Sensor -->
+      <sensor name='front_camera' type='camera'>
+        <pose>0.37646 0 0.03738 0 0 0</pose>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+        <topic>/model/M20/link/base_link/sensor/front_camera/image</topic>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+      </sensor>
+      
+      <!-- Rear Camera Sensor -->
+      <sensor name='rear_camera' type='camera'>
+        <pose>-0.37646 0 0.03738 0 0 3.14159</pose>
+        <always_on>true</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+        <topic>/model/M20/link/base_link/sensor/rear_camera/image</topic>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+        </camera>
+      </sensor>
+      
+      <!-- Front LiDAR Sensor -->
+      <sensor name='front_lidar' type='gpu_lidar'>
+        <pose>0.32028 0 -0.013 0 0 0</pose>
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <visualize>true</visualize>
+        <topic>/model/M20/link/base_link/sensor/front_lidar/scan</topic>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>640</samples>
+              <resolution>1</resolution>
+              <min_angle>-1.5708</min_angle>
+              <max_angle>1.5708</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.261799</min_angle>
+              <max_angle>0.261799</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.05</min>
+            <max>30</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>none</type>
+          </noise>
+        </lidar>
+      </sensor>
+      
+      <!-- Rear LiDAR Sensor -->
+      <sensor name='rear_lidar' type='gpu_lidar'>
+        <pose>-0.32028 0 -0.013 0 0 3.14159</pose>
+        <always_on>true</always_on>
+        <update_rate>10</update_rate>
+        <visualize>true</visualize>
+        <topic>/model/M20/link/base_link/sensor/rear_lidar/scan</topic>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>640</samples>
+              <resolution>1</resolution>
+              <min_angle>-1.5708</min_angle>
+              <max_angle>1.5708</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.261799</min_angle>
+              <max_angle>0.261799</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.05</min>
+            <max>30</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>none</type>
+          </noise>
+        </lidar>
       </sensor>
     </link>
     <joint name='fl_hipx_joint' type='revolute'>

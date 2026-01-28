@@ -94,6 +94,12 @@ install(TARGETS rl_deploy
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Install Python scripts as executables
+install(PROGRAMS
+  interface/robot/simulation/gazebo_controller_ros2.py
+  interface/robot/simulation/mujoco_simulation_ros2.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(DIRECTORY launch model
   DESTINATION share/${PROJECT_NAME}

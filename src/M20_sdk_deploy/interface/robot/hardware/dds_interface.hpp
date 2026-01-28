@@ -122,16 +122,21 @@ public:
         joint_config_ = new JointConfig[dof_num_];
         control_word = new uint16_t[4];
 
-        driver_status_.resize(dof_num_);
+        // Initialize driver_status_ with 1 (normal) to avoid false errors before data arrives
+        driver_status_.resize(dof_num_, 1);
         joint_data_id_.resize(dof_num_);
         battery_data_.resize(BATTERY_DATA_SIZE);
+        // Initialize battery level to non-zero to avoid low battery warning
+        battery_data_[0] = 100;
 
-        joint_cmd_pub_ = node_->create_publisher<drdds::msg::JointsDataCmd>("/JOINTS_CMD", 10);
-        joint_data_sub_ = node_->create_subscription<drdds::msg::JointsData>("/JOINTS_DATA", 10,
+        // Use relative topic names (without leading /) so ROS2 namespace works
+        // When node runs with namespace /M20_A, topics become /M20_A/JOINTS_CMD, etc.
+        joint_cmd_pub_ = node_->create_publisher<drdds::msg::JointsDataCmd>("JOINTS_CMD", 10);
+        joint_data_sub_ = node_->create_subscription<drdds::msg::JointsData>("JOINTS_DATA", 10,
                                     std::bind(&DdsInterface::Handler, this,std::placeholders::_1));
-        imu_data_sub_ = node_->create_subscription<drdds::msg::ImuData>("/IMU_DATA", 10,
+        imu_data_sub_ = node_->create_subscription<drdds::msg::ImuData>("IMU_DATA", 10,
                                     std::bind(&DdsInterface::HandlerIMU, this, std::placeholders::_1));
-        health_data_sub_ = node_->create_subscription<drdds::msg::BatteryData>("/BATTERY_DATA", 10,
+        health_data_sub_ = node_->create_subscription<drdds::msg::BatteryData>("BATTERY_DATA", 10,
                                     std::bind(&DdsInterface::HandlerHealth, this, std::placeholders::_1));
         
         sleep(1);

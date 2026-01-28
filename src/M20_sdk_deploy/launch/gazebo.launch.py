@@ -1,52 +1,31 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler, TimerAction, SetEnvironmentVariable
 from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 import os
 
-
-def remove_entity_action(world_name_str: str, entity_name: str):
-    """
-    Create an ExecuteProcess action that removes an entity by name from Gazebo.
-    Uses the Gazebo Transport service: /world/<world>/remove
-    """
-    service = f"/world/{world_name_str}/remove"
-
-    # Protobuf text format request for ignition.msgs.Entity
-    # Type enum: MODEL is typically what you want for world models.
-    req = f'name: "{entity_name}" type: MODEL'
-
-    return ExecuteProcess(
-        cmd=[
-            "ign", "service",
-            "-s", service,
-            "--reqtype", "ignition.msgs.Entity",
-            "--reptype", "ignition.msgs.Boolean",
-            "--timeout", "3000",
-            "--req", req,
-        ],
-        output="screen",
-    )
+# Path to the model directory containing Depot_simple
+MODEL_PATH = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model"
+# Path to the simplified world file
+WORLD_FILE = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
 
 
 def generate_launch_description():
     world_name = LaunchConfiguration("world_name")
-    ign_world = LaunchConfiguration("ign_world")
     robot_name = LaunchConfiguration("robot_name")
     robot_sdf = LaunchConfiguration("robot_sdf")
     x = LaunchConfiguration("x")
     y = LaunchConfiguration("y")
     z = LaunchConfiguration("z")
 
+    # Get existing IGN_GAZEBO_RESOURCE_PATH and append our model path
+    existing_path = os.environ.get("IGN_GAZEBO_RESOURCE_PATH", "")
+    new_resource_path = f"{MODEL_PATH}:{existing_path}" if existing_path else MODEL_PATH
+
     declare_args = [
         DeclareLaunchArgument("world_name", default_value="Edifice"),
-        DeclareLaunchArgument(
-            "ign_world",
-            default_value='https://fuel.ignitionrobotics.org/1.0/OpenRobotics/worlds/Edifice demo',
-            description='Exactly what you pass to: ign gazebo -v 4 "<IGN_WORLD>"',
-        ),
         DeclareLaunchArgument("robot_name", default_value="M20"),
         DeclareLaunchArgument(
             "robot_sdf",
@@ -57,13 +36,50 @@ def generate_launch_description():
         DeclareLaunchArgument("z", default_value="0.57"),  # Higher spawn to prevent immediate fall
     ]
 
-    # 1) Start Gazebo with auto-run (not paused)
+    # Set environment variable for Gazebo to find our custom models
+    set_ign_resource_path = SetEnvironmentVariable(
+        name="IGN_GAZEBO_RESOURCE_PATH",
+        value=new_resource_path
+    )
+
+    # 1) Start Gazebo with simplified world (auto-run, not paused)
     gazebo = ExecuteProcess(
-        cmd=["ign", "gazebo", "-v", "4", "-r", ign_world],  # -r flag starts simulation running
+        cmd=["ign", "gazebo", "-v", "4", "-r", WORLD_FILE],
+        output="screen",
+        additional_env={"IGN_GAZEBO_RESOURCE_PATH": new_resource_path},
+    )
+
+    # 2) GPU monitoring - shows GPU utilization, VRAM, and temperature every 3 seconds
+    gpu_monitor = ExecuteProcess(
+        cmd=[
+            "bash", "-c",
+            "sleep 8 && while true; do "
+            "echo '' && "
+            "echo '[GPU STATS] '$(date '+%H:%M:%S')' -------------------------------------------' && "
+            "nvidia-smi --query-gpu=utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits | "
+            "awk -F', ' '{printf \"  GPU Util: %3d%% | Mem Util: %3d%% | VRAM: %s/%s MiB | Temp: %s C\\n\", $1, $2, $3, $4, $5}' && "
+            "sleep 3; "
+            "done"
+        ],
         output="screen",
     )
 
-    # 2) Spawn robot with ros_gz_sim create
+    # 3) Gazebo stats monitor - shows real-time factor and sim time
+    gazebo_stats_monitor = ExecuteProcess(
+        cmd=[
+            "bash", "-c",
+            "sleep 10 && while true; do "
+            "ign topic -e -t /stats -n 1 2>/dev/null | "
+            "grep -E '(real_time_factor|sim_time|iterations)' | head -6 | "
+            "awk '/real_time_factor/ {rtf=$2} /sim_time.*sec:/ {st=$2} /iterations/ {iter=$2} "
+            "END {if(rtf) printf \"[SIM STATS] RTF: %.2f | Iterations: %s\\n\", rtf, iter}' && "
+            "sleep 3; "
+            "done"
+        ],
+        output="screen",
+    )
+
+    # 4) Spawn robot with ros_gz_sim create (delayed to let world load)
     spawn_robot = Node(
         package="ros_gz_sim",
         executable="create",
@@ -78,16 +94,11 @@ def generate_launch_description():
         ],
     )
 
-    # Remove unwanted entities from the world
-    remove_franka = remove_entity_action("Edifice", "Panda")
-    remove_table = remove_entity_action("Edifice", "Reflective table")
-    remove_mecanum_lift = remove_entity_action("Edifice", "Mecanum lift")
-    
-    # Wait 8 seconds to remove entities, then spawn robot at 10 seconds
-    delayed_remove = TimerAction(period=8.0, actions=[remove_franka, remove_table, remove_mecanum_lift])
-    delayed_spawn = TimerAction(period=12.0, actions=[spawn_robot])
+    # Spawn robot after 8 seconds to let world fully load
+    delayed_spawn = TimerAction(period=8.0, actions=[spawn_robot])
 
     # 3) Bridge joint states from Gazebo to ROS2
+    # Note: Topics are namespaced with /M20/ to be consistent with multi-robot setup
     bridge_joint_states = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -95,7 +106,7 @@ def generate_launch_description():
             '/world/Edifice/model/M20/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model'
         ],
         remappings=[
-            ('/world/Edifice/model/M20/joint_state', '/joint_states')
+            ('/world/Edifice/model/M20/joint_state', '/M20/joint_states')
         ],
         output='screen'
     )
@@ -108,7 +119,32 @@ def generate_launch_description():
             '/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
         remappings=[
-            ('/model/M20/link/base_link/sensor/imu_sensor/imu', '/imu/data')
+            ('/model/M20/link/base_link/sensor/imu_sensor/imu', '/M20/IMU')
+        ],
+        output='screen'
+    )
+
+    # 5) Bridge front LiDAR point cloud data from Gazebo to ROS2
+    bridge_front_lidar = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            '/model/M20/link/base_link/sensor/front_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
+        ],
+        remappings=[
+            ('/model/M20/link/base_link/sensor/front_lidar/scan/points', '/M20/LIDAR/FRONT')
+        ],
+        output='screen'
+    )
+
+    bridge_rear_lidar = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            '/model/M20/link/base_link/sensor/rear_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
+        ],
+        remappings=[
+            ('/model/M20/link/base_link/sensor/rear_lidar/scan/points', '/M20/LIDAR/REAR')
         ],
         output='screen'
     )
@@ -134,18 +170,24 @@ def generate_launch_description():
             )
         )
 
-    # 6) Controller node - Python script
+    # 6) Controller node - Python script with parameters
+    # Note: Using /M20 namespace for DDS topics (JOINTS_DATA, IMU_DATA, JOINTS_CMD)
     controller_node = Node(
         package='rl_deploy',
         executable='gazebo_controller_ros2.py',
         output='screen',
-        name='gazebo_controller'
+        name='gazebo_controller',
+        namespace='M20',  # DDS topics will be /M20/JOINTS_DATA, /M20/IMU_DATA, etc.
+        parameters=[{
+            'robot_name': 'M20',
+            'world_name': 'Edifice',
+        }],
     )
 
     # Start bridges and controller after robot spawns
     delayed_bridges_controller = TimerAction(
         period=15.0, 
-        actions=[bridge_joint_states, bridge_imu] + bridge_joints + [controller_node]
+        actions=[bridge_joint_states, bridge_imu] + bridge_joints + [controller_node] + [bridge_front_lidar, bridge_rear_lidar]
     )
 
-    return LaunchDescription(declare_args + [gazebo, delayed_remove, delayed_spawn, delayed_bridges_controller])
+    return LaunchDescription(declare_args + [set_ign_resource_path, gazebo, gpu_monitor, gazebo_stats_monitor, delayed_spawn, delayed_bridges_controller])

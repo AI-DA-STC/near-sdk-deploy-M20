@@ -88,44 +88,44 @@ def create_robot_bridges(robot_name, world_name="Edifice"):
         output='screen'
     ))
 
-    # IMU bridge
+    # IMU bridge - note: sensor topics use /world/{world}/model/{robot}/... format
     bridges.append(Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name=f'{robot_name}_imu_bridge',
         arguments=[
-            f'/model/{robot_name}/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
+            f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
         remappings=[
-            (f'/model/{robot_name}/link/base_link/sensor/imu_sensor/imu', f'/{robot_name}/IMU')
+            (f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/imu_sensor/imu', f'/{robot_name}/IMU')
         ],
         output='screen'
     ))
 
-    # Front LiDAR bridge
+    # Front LiDAR bridge - note: sensor topics use /world/{world}/model/{robot}/... format
     bridges.append(Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name=f'{robot_name}_front_lidar_bridge',
         arguments=[
-            f'/model/{robot_name}/link/base_link/sensor/front_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
+            f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/front_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
         ],
         remappings=[
-            (f'/model/{robot_name}/link/base_link/sensor/front_lidar/scan/points', f'/{robot_name}/LIDAR/FRONT')
+            (f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/front_lidar/scan/points', f'/{robot_name}/LIDAR/FRONT')
         ],
         output='screen'
     ))
 
-    # Rear LiDAR bridge
+    # Rear LiDAR bridge - note: sensor topics use /world/{world}/model/{robot}/... format
     bridges.append(Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name=f'{robot_name}_rear_lidar_bridge',
         arguments=[
-            f'/model/{robot_name}/link/base_link/sensor/rear_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
+            f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/rear_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
         ],
         remappings=[
-            (f'/model/{robot_name}/link/base_link/sensor/rear_lidar/scan/points', f'/{robot_name}/LIDAR/REAR')
+            (f'/world/{world_name}/model/{robot_name}/link/base_link/sensor/rear_lidar/scan/points', f'/{robot_name}/LIDAR/REAR')
         ],
         output='screen'
     ))

@@ -29,7 +29,7 @@ def generate_launch_description():
         DeclareLaunchArgument("robot_name", default_value="M20"),
         DeclareLaunchArgument(
             "robot_sdf",
-            default_value="/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.sdf",
+            default_value="/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/M20_urdf/urdf/M20_velodyne.sdf",
         ),
         DeclareLaunchArgument("x", default_value="0.0"),
         DeclareLaunchArgument("y", default_value="0.0"),
@@ -116,35 +116,23 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
+            '/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
         remappings=[
-            ('/model/M20/link/base_link/sensor/imu_sensor/imu', '/M20/IMU')
+            ('/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu', '/M20/IMU')
         ],
         output='screen'
     )
 
-    # 5) Bridge front LiDAR point cloud data from Gazebo to ROS2
-    bridge_front_lidar = Node(
+    # 5) Bridge Velodyne HDL-32E point cloud data from Gazebo to ROS2
+    bridge_velodyne = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/model/M20/link/base_link/sensor/front_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
+            '/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
         ],
         remappings=[
-            ('/model/M20/link/base_link/sensor/front_lidar/scan/points', '/M20/LIDAR/FRONT')
-        ],
-        output='screen'
-    )
-
-    bridge_rear_lidar = Node(
-        package='ros_gz_bridge',
-        executable='parameter_bridge',
-        arguments=[
-            '/model/M20/link/base_link/sensor/rear_lidar/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
-        ],
-        remappings=[
-            ('/model/M20/link/base_link/sensor/rear_lidar/scan/points', '/M20/LIDAR/REAR')
+            ('/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points', '/M20/LIDAR/VELODYNE')
         ],
         output='screen'
     )
@@ -187,7 +175,7 @@ def generate_launch_description():
     # Start bridges and controller after robot spawns
     delayed_bridges_controller = TimerAction(
         period=15.0, 
-        actions=[bridge_joint_states, bridge_imu] + bridge_joints + [controller_node] + [bridge_front_lidar, bridge_rear_lidar]
+        actions=[bridge_joint_states, bridge_imu] + bridge_joints + [controller_node] + [bridge_velodyne]
     )
 
     return LaunchDescription(declare_args + [set_ign_resource_path, gazebo, gpu_monitor, gazebo_stats_monitor, delayed_spawn, delayed_bridges_controller])

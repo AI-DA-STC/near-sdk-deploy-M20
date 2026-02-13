@@ -31,10 +31,10 @@ from launch_ros.actions import Node, PushRosNamespace
 import os
 
 # Paths
-MODEL_PATH = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model"
-WORLD_FILE = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
-ROBOT_SDF = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.sdf"
-CONFIG_BASE_PATH = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/config/glim"
+MODEL_PATH = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model"
+WORLD_FILE = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
+ROBOT_SDF = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.sdf"
+CONFIG_BASE_PATH = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/config/glim"
 
 # Robot spawn positions
 ROBOT_CONFIGS = {

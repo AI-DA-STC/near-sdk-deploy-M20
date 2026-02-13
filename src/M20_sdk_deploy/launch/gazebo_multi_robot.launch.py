@@ -30,15 +30,12 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace
 import os
 
-# Path to the URDF file for robot_state_publisher
-URDF_FILE = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.urdf"
-
 # Path to the model directory containing Depot_simple
-MODEL_PATH = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model"
+MODEL_PATH = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model"
 # Path to the simplified world file
-WORLD_FILE = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
+WORLD_FILE = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
 # Path to the robot SDF
-ROBOT_SDF = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.sdf"
+ROBOT_SDF = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/M20_urdf/urdf/M20.sdf"
 
 # Robot configurations
 ROBOTS = [
@@ -52,16 +49,6 @@ JOINT_NAMES = [
     'fr_hipx_joint', 'fr_hipy_joint', 'fr_knee_joint', 'fr_wheel_joint',
     'hl_hipx_joint', 'hl_hipy_joint', 'hl_knee_joint', 'hl_wheel_joint',
     'hr_hipx_joint', 'hr_hipy_joint', 'hr_knee_joint', 'hr_wheel_joint'
-]
-
-# Sensor frame configurations (from M20.sdf)
-# Format: (sensor_name, x, y, z, roll, pitch, yaw)
-SENSOR_FRAMES = [
-    ('front_lidar', 0.32028, 0, -0.013, 0, 0, 0),
-    ('rear_lidar', -0.32028, 0, -0.013, 0, 0, 3.14159),
-    ('imu_sensor', 0.0632, -0.0268, -0.0435, 0, 0, 0),
-    ('front_camera', 0.37646, 0, 0.03738, 0, 0, 0),
-    ('rear_camera', -0.37646, 0, 0.03738, 0, 0, 3.14159),
 ]
 
 
@@ -175,53 +162,8 @@ def create_robot_controller(robot_name, world_name="Edifice"):
     ])
 
 
-def create_robot_state_publisher(robot_name, robot_description):
-    """Create the robot_state_publisher node for a robot with namespace and frame_prefix"""
-    return Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        name='robot_state_publisher',
-        namespace=robot_name,
-        output='screen',
-        parameters=[{
-            'robot_description': robot_description,
-            'frame_prefix': f'{robot_name}/',
-        }],
-        remappings=[
-            ('joint_states', f'/{robot_name}/joint_states'),
-        ],
-    )
-
-
-def create_sensor_static_transforms(robot_name):
-    """Create static transform publishers for sensor frames"""
-    transforms = []
-    for sensor_name, x, y, z, roll, pitch, yaw in SENSOR_FRAMES:
-        transforms.append(Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name=f'{robot_name}_{sensor_name}_tf',
-            arguments=[
-                '--x', str(x),
-                '--y', str(y),
-                '--z', str(z),
-                '--roll', str(roll),
-                '--pitch', str(pitch),
-                '--yaw', str(yaw),
-                '--frame-id', f'{robot_name}/base_link',
-                '--child-frame-id', f'{robot_name}/base_link/{sensor_name}',
-            ],
-            output='screen'
-        ))
-    return transforms
-
-
 def generate_launch_description():
     world_name = "Edifice"
-
-    # Load URDF content for robot_state_publisher (shared by all robots)
-    with open(URDF_FILE, 'r') as urdf_file:
-        robot_description = urdf_file.read()
 
     # Get existing IGN_GAZEBO_RESOURCE_PATH and append our model path
     existing_path = os.environ.get("IGN_GAZEBO_RESOURCE_PATH", "")
@@ -266,7 +208,7 @@ def generate_launch_description():
             )
         )
 
-    # 4) Create bridges, controllers, robot_state_publishers, and sensor TFs for all robots (after spawning)
+    # 4) Create bridges and controllers for all robots (after spawning)
     bridge_controller_actions = []
     for i, robot in enumerate(ROBOTS):
         robot_name = robot["name"]
@@ -278,16 +220,10 @@ def generate_launch_description():
         # Controller for this robot
         controller = create_robot_controller(robot_name, world_name)
 
-        # Robot state publisher for this robot (publishes TF)
-        rsp = create_robot_state_publisher(robot_name, robot_description)
-
-        # Static transform publishers for sensor frames
-        sensor_tfs = create_sensor_static_transforms(robot_name)
-
         bridge_controller_actions.append(
             TimerAction(
                 period=start_delay,
-                actions=bridges + [controller, rsp] + sensor_tfs
+                actions=bridges + [controller]
             )
         )
 

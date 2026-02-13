@@ -17,7 +17,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace
 import os
 
-CONFIG_BASE_PATH = "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/config/glim"
+CONFIG_BASE_PATH = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/config/glim"
 
 
 def create_static_tf_publishers(robot_name):

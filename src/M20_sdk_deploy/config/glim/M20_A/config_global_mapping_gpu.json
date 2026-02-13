@@ -48,6 +48,6 @@
     "isam2_relinearize_skip": 1,
     "isam2_relinearize_thresh": 0.1,
     // Map saving - use GLIM viewer: File > Save Map
-    "dump_path": "/home/krishna/Workspace/near-sdk-deploy-M20/maps/M20_A"
+    "dump_path": "/home/cjy/deeprobotics_ws/maps/M20_A"
   }
 }

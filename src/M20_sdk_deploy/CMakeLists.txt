@@ -98,7 +98,6 @@ install(TARGETS rl_deploy
 install(PROGRAMS
   interface/robot/simulation/gazebo_controller_ros2.py
   interface/robot/simulation/mujoco_simulation_ros2.py
-  scripts/pointcloud_merger.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

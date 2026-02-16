@@ -31,8 +31,9 @@
     </plugin>
 
     <!-- Simplified Depot - only warehouse structure, no boxes/fans/crates -->
+    <!-- Uses model:// URI which resolves via IGN_GAZEBO_RESOURCE_PATH set in launch files -->
     <include>
-      <uri>/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/Depot_simple</uri>
+      <uri>model://Depot_simple</uri>
     </include>
 
     <!-- Simple directional light for the scene -->

@@ -48,6 +48,7 @@
     "isam2_relinearize_skip": 1,
     "isam2_relinearize_thresh": 0.1,
     // Map saving - use GLIM viewer: File > Save Map
-    "dump_path": "/home//home/cjy/deeprobotics_ws/maps/M20_B"
+    // Note: Update this path to your desired map output location
+    "dump_path": "~/maps/M20_B"
   }
 }

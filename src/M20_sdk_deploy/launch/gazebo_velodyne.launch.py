@@ -4,12 +4,32 @@ from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from pyprojroot import here
 import os
 
+# Get project root using pyprojroot (finds .git, setup.py, etc.)
+PROJECT_ROOT = here()
+PACKAGE_PATH = PROJECT_ROOT / "src" / "M20_sdk_deploy"
+
 # Path to the model directory containing Depot_simple
-MODEL_PATH = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model"
+MODEL_PATH = str(PACKAGE_PATH / "model")
 # Path to the simplified world file
-WORLD_FILE = "/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/Edifice_simple/edifice_simple.sdf"
+WORLD_FILE = str(PACKAGE_PATH / "model" / "Edifice_simple" / "edifice_simple.sdf")
+# URDF file path for robot_state_publisher
+URDF_FILE = str(PACKAGE_PATH / "model" / "M20_urdf" / "urdf" / "M20.urdf")
+MESHES_DIR = str(PACKAGE_PATH / "model" / "M20_urdf" / "meshes")
+
+
+def get_robot_description():
+    """Read URDF file and return as string with absolute mesh paths for RViz2."""
+    with open(URDF_FILE, 'r') as urdf_file:
+        urdf_content = urdf_file.read()
+    # Replace relative mesh paths with absolute file:// URIs so RViz2 can find them
+    urdf_content = urdf_content.replace(
+        'filename="../meshes/',
+        f'filename="file://{MESHES_DIR}/'
+    )
+    return urdf_content
 
 
 def generate_launch_description():
@@ -29,7 +49,7 @@ def generate_launch_description():
         DeclareLaunchArgument("robot_name", default_value="M20"),
         DeclareLaunchArgument(
             "robot_sdf",
-            default_value="/home/cjy/deeprobotics_ws/src/M20_sdk_deploy/model/M20_urdf/urdf/M20_velodyne.sdf",
+            default_value=str(PACKAGE_PATH / "model" / "M20_urdf" / "urdf" / "M20_velodyne.sdf"),
         ),
         DeclareLaunchArgument("x", default_value="0.0"),
         DeclareLaunchArgument("y", default_value="0.0"),
@@ -83,6 +103,7 @@ def generate_launch_description():
     spawn_robot = Node(
         package="ros_gz_sim",
         executable="create",
+        name='M20_spawn_robot',
         output="screen",
         arguments=[
             "-world", world_name,
@@ -97,11 +118,12 @@ def generate_launch_description():
     # Spawn robot after 8 seconds to let world fully load
     delayed_spawn = TimerAction(period=8.0, actions=[spawn_robot])
 
-    # 3) Bridge joint states from Gazebo to ROS2
+    # 5) Bridge joint states from Gazebo to ROS2
     # Note: Topics are namespaced with /M20/ to be consistent with multi-robot setup
     bridge_joint_states = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
+        name='M20_joint_states_bridge',
         arguments=[
             '/world/Edifice/model/M20/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model'
         ],
@@ -111,10 +133,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 4) Bridge IMU data from Gazebo to ROS2
+    # 6) Bridge IMU data from Gazebo to ROS2
     bridge_imu = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
+        name='M20_imu_bridge',
         arguments=[
             '/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
@@ -124,10 +147,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 5) Bridge Velodyne HDL-32E point cloud data from Gazebo to ROS2
+    # 7) Bridge Velodyne HDL-32E point cloud data from Gazebo to ROS2
     bridge_velodyne = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
+        name='M20_velodyne_bridge',
         arguments=[
             '/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
         ],
@@ -137,7 +161,47 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 5) Bridge joint force commands for each joint
+    # 8) Bridge clock for synchronized timestamps
+    bridge_clock = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='M20_clock_bridge',
+        arguments=['/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock'],
+        output='screen'
+    )
+
+    # 9) Static TF publisher for Velodyne sensor frame (pose from SDF: 0.3 0 0.145)
+    static_tf_velodyne = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='M20_velodyne_static_tf',
+        arguments=['0.3', '0', '0.145', '0', '0', '0', 'base_link', 'velodyne_hdl32e'],
+        output='screen'
+    )
+
+    # 10) Static TF publisher for IMU frame (pose from SDF: 0.0632 -0.0268 -0.0435)
+    static_tf_imu = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='M20_imu_static_tf',
+        arguments=['0.0632', '-0.0268', '-0.0435', '0', '0', '0', 'base_link', 'imu_sensor'],
+        output='screen'
+    )
+
+    # 11) Robot State Publisher - publishes TF transforms based on joint states
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        name='M20_robot_state_publisher',
+        output='screen',
+        parameters=[{
+            'robot_description': get_robot_description(),
+            'use_sim_time': True,
+        }],
+        remappings=[('/joint_states', '/M20/joint_states')],
+    )
+
+    # 12) Bridge joint force commands for each joint
     bridge_joints = []
     joint_names = [
         'fl_hipx_joint', 'fl_hipy_joint', 'fl_knee_joint', 'fl_wheel_joint',
@@ -151,6 +215,7 @@ def generate_launch_description():
             Node(
                 package='ros_gz_bridge',
                 executable='parameter_bridge',
+                name=f'M20_{joint_name}_bridge',
                 arguments=[
                     f'/model/M20/joint/{joint_name}/cmd_force@std_msgs/msg/Float64]ignition.msgs.Double'
                 ],
@@ -158,7 +223,7 @@ def generate_launch_description():
             )
         )
 
-    # 6) Controller node - Python script with parameters
+    # 13) Controller node - Python script with parameters
     # Note: Using /M20 namespace for DDS topics (JOINTS_DATA, IMU_DATA, JOINTS_CMD)
     controller_node = Node(
         package='rl_deploy',
@@ -174,8 +239,16 @@ def generate_launch_description():
 
     # Start bridges and controller after robot spawns
     delayed_bridges_controller = TimerAction(
-        period=15.0, 
-        actions=[bridge_joint_states, bridge_imu] + bridge_joints + [controller_node] + [bridge_velodyne]
+        period=15.0,
+        actions=[
+            bridge_joint_states,
+            bridge_imu,
+            bridge_velodyne,
+            bridge_clock,
+            static_tf_velodyne,
+            static_tf_imu,
+            robot_state_publisher,
+        ] + bridge_joints + [controller_node]
     )
 
     return LaunchDescription(declare_args + [set_ign_resource_path, gazebo, gpu_monitor, gazebo_stats_monitor, delayed_spawn, delayed_bridges_controller])

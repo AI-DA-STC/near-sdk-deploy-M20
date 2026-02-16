@@ -44,16 +44,16 @@
   */
   "sensors": {
     // IMU config
-    "imu_acc_noise": 0.05,
-    "imu_gyro_noise": 0.02,
+    "imu_acc_noise": 0.01,
+    "imu_gyro_noise": 0.01,
     "imu_int_noise": 0.001,
     "imu_bias_noise": 1e-5,
-    // LiDAR config (true for Gazebo simulation - no rolling shutter effects)
-    "global_shutter_lidar": true,
+    // LiDAR config
+    "global_shutter_lidar": false,
     "T_lidar_imu": [
-      0.006,
-      -0.012,
-      0.008,
+      -0.2368,
+      -0.0268,
+      -0.1885,
       0.0,
       0.0,
       0.0,

@@ -130,7 +130,7 @@ class GazeboControllerNode(Node):
         )
         self.get_logger().info(f"[INFO] Subscribed to {imu_topic}")
 
-        front_lidar_topic = f'/{self.robot_name}/LIDAR/FRONT'
+        front_lidar_topic = f'/{self.robot_name}/LIDAR/VELODYNE'
         self.front_lidar_sub = self.create_subscription(
             PointCloud2,
             front_lidar_topic,

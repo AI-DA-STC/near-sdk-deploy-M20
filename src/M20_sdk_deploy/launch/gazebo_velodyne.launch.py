@@ -51,8 +51,8 @@ def generate_launch_description():
             "robot_sdf",
             default_value=str(PACKAGE_PATH / "model" / "M20_urdf" / "urdf" / "M20_velodyne.sdf"),
         ),
-        DeclareLaunchArgument("x", default_value="0.0"),
-        DeclareLaunchArgument("y", default_value="0.0"),
+        DeclareLaunchArgument("x", default_value="12.0"),
+        DeclareLaunchArgument("y", default_value="4.5"),
         DeclareLaunchArgument("z", default_value="0.57"),  # Higher spawn to prevent immediate fall
     ]
 

@@ -36,6 +36,12 @@
       <uri>model://Depot_simple</uri>
     </include>
 
+    <!-- Rescue Randy - human obstacle -->
+    <include>
+      <pose>-13.2 -6.0 0 0 0 1.57</pose>
+      <uri>https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Rescue Randy Sitting</uri>
+    </include>
+
     <!-- Simple directional light for the scene -->
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>

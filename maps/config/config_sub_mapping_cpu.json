@@ -1,0 +1,22 @@
+{
+  "sub_mapping": {
+    "between_registration_type": "GICP",
+    "create_between_factors": false,
+    "enable_imu": true,
+    "enable_optimization": false,
+    "keyframe_randomsampling_rate": 1.0,
+    "keyframe_update_interval_rot": 3.14,
+    "keyframe_update_interval_trans": 1.0,
+    "keyframe_update_min_points": 500,
+    "keyframe_update_strategy": "OVERLAP",
+    "keyframe_voxel_resolution": 0.25,
+    "keyframe_voxelmap_levels": 2,
+    "keyframe_voxelmap_scaling_factor": 2.0,
+    "max_keyframe_overlap": 0.6,
+    "max_num_keyframes": 15,
+    "registration_error_factor_type": "VGICP",
+    "so_name": "libsub_mapping.so",
+    "submap_downsample_resolution": 0.3,
+    "submap_voxel_resolution": 0.5
+  }
+}

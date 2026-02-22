@@ -1,0 +1,36 @@
+{
+  "glim_ros": {
+    "acc_scale": 1.0,
+    "base_frame_id": "base_link",
+    "enable_global_mapping": true,
+    "enable_local_mapping": true,
+    "extension_modules": [
+      "libmemory_monitor.so",
+      "libstandard_viewer.so",
+      "librviz_viewer.so"
+    ],
+    "image_qos": {
+      "profile": "sensor_data"
+    },
+    "image_topic": "/image",
+    "imu_frame_id": "imu_sensor",
+    "imu_qos": {
+      "depth": 100,
+      "profile": "sensor_data"
+    },
+    "imu_time_offset": 0.0,
+    "imu_topic": "/M20/IMU",
+    "keep_raw_points": false,
+    "lidar_frame_id": "velodyne_hdl32e",
+    "map_frame_id": "map",
+    "odom_frame_id": "odom",
+    "points_qos": {
+      "depth": 50,
+      "profile": "sensor_data"
+    },
+    "points_time_offset": 0.0,
+    "points_topic": "/M20/LIDAR/VELODYNE",
+    "publish_imu2lidar": true,
+    "tf_time_offset": 1e-06
+  }
+}

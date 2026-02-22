@@ -1,0 +1,4 @@
+num_submaps: 2
+num_all_frames: 946
+num_matching_cost_factors: 1
+matching_cost vgicp 0 1

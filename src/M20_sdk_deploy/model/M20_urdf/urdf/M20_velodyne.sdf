@@ -215,7 +215,7 @@
       <sensor name='velodyne_hdl32e' type='gpu_lidar'>
         <pose>0.3 0 0.145 0 0 0</pose>
         <always_on>true</always_on>
-        <update_rate>10</update_rate>
+        <update_rate>15</update_rate>
         <visualize>true</visualize>
         <lidar>
           <scan>

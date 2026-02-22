@@ -50,13 +50,14 @@
     // Points config
     "keep_raw_points": false,
     // IMU config
+    // Negative offset to compensate for IMU running ahead of LiDAR in simulation
     "imu_time_offset": 0.0,
     "points_time_offset": 0.0,
     "acc_scale": 1.0,
     // TF config
-    "imu_frame_id": "", // Auto-detect if blank
-    "lidar_frame_id": "", // Auto-detect if blank
-    "base_frame_id": "", // If blank, IMU frame ID is used
+    "imu_frame_id": "imu_sensor",
+    "lidar_frame_id": "velodyne_hdl32e",
+    "base_frame_id": "base_link",
     "odom_frame_id": "odom",
     "map_frame_id": "map",
     "publish_imu2lidar": true,
@@ -75,10 +76,11 @@
     // QoS options
     "imu_qos": {
       "profile": "sensor_data",
-      "depth": 1000
+      "depth": 100
     },
     "points_qos": {
-      "profile": "sensor_data"
+      "profile": "sensor_data",
+      "depth": 50
     },
     "image_qos": {
       "profile": "sensor_data"

@@ -1,0 +1,25 @@
+{
+  "odometry_estimation": {
+    "fix_imu_bias": false,
+    "init_pose_damping_scale": 10000000000.0,
+    "initialization_mode": "NAIVE",
+    "initialization_window_size": 3.0,
+    "isam2_relinearize_skip": 1,
+    "isam2_relinearize_thresh": 0.1,
+    "ivox_min_dist": 0.1,
+    "ivox_resolution": 1.0,
+    "lru_thresh": 100,
+    "max_iterations": 8,
+    "num_threads": 2,
+    "registration_type": "GICP",
+    "save_imu_rate_trajectory": true,
+    "smoother_lag": 5.0,
+    "so_name": "libodometry_estimation_cpu.so",
+    "target_downsampling_rate": 0.1,
+    "use_isam2_dogleg": false,
+    "validate_imu": true,
+    "vgicp_resolution": 0.5,
+    "vgicp_voxelmap_levels": 1,
+    "vgicp_voxelmap_scaling_factor": 2.0
+  }
+}

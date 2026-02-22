@@ -14,6 +14,7 @@ from pyprojroot import here
 import os
 
 CONFIG_PATH = str(here() / "src" / "M20_sdk_deploy" / "config" / "glim" / "M20_A")
+DUMP_PATH = str(here() / "maps")
 
 
 def generate_launch_description():
@@ -23,6 +24,9 @@ def generate_launch_description():
             executable='glim_rosnode',
             name='glim_slam',
             output='screen',
-            parameters=[{'config_path': CONFIG_PATH}],
+            parameters=[{
+                'config_path': CONFIG_PATH,
+                'dump_path': DUMP_PATH,
+            }],
         ),
     ])

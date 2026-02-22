@@ -1,0 +1,20 @@
+{
+  "global_mapping": {
+    "between_registration_type": "GICP",
+    "create_between_factors": true,
+    "enable_imu": true,
+    "enable_optimization": true,
+    "init_pose_damping_scale": 10000000000.0,
+    "isam2_relinearize_skip": 1,
+    "isam2_relinearize_thresh": 0.1,
+    "max_implicit_loop_distance": 100.0,
+    "min_implicit_loop_overlap": 0.2,
+    "randomsampling_rate": 0.2,
+    "registration_error_factor_type": "VGICP",
+    "so_name": "libglobal_mapping.so",
+    "submap_voxel_resolution": 0.5,
+    "submap_voxelmap_levels": 1,
+    "submap_voxelmap_scaling_factor": 2.0,
+    "use_isam2_dogleg": false
+  }
+}

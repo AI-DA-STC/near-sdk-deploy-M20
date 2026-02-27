@@ -1,0 +1,49 @@
+map_server:
+  ros__parameters:
+    use_sim_time: true
+    yaml_filename: ""  # Set via launch argument
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    # Frames
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: map
+    # Topic
+    scan_topic: /M20/scan
+    # Particle filter
+    min_particles: 500
+    max_particles: 2000
+    # Motion model (omni for quadruped — supports lateral/crab walking)
+    robot_model_type: nav2_amcl::OmniMotionModel
+    alpha1: 0.2   # rotation from rotation
+    alpha2: 0.2   # rotation from translation
+    alpha3: 0.2   # translation from translation
+    alpha4: 0.2   # translation from rotation
+    alpha5: 0.2   # translation noise
+    # Laser model
+    laser_model_type: likelihood_field
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 70.0
+    laser_min_range: 0.9
+    max_beams: 60
+    # Pose updates
+    update_min_d: 0.25
+    update_min_a: 0.2
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+    # Transform tolerance
+    transform_tolerance: 1.0
+
+lifecycle_manager_localization:
+  ros__parameters:
+    use_sim_time: true
+    autostart: true
+    node_names:
+      - map_server
+      - amcl

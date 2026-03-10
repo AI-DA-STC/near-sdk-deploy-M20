@@ -1,8 +1,9 @@
 ## Overview
 
-This repository uses ROS2 to implement the entire Sim-to-sim and Sim-to-real workflow. Therefore, ROS2 must first be installed on your computer, such as installing [ROS2 Humble](https://docs.ros.org/en/humble/index.html) on Ubuntu 22.04. We've also released an introduction [video](https://www.youtube.com/watch?v=FNaxsDBtD7A), please check it out! Please go through the whole process on a Ubuntu system.
+This repository uses ROS2 to implement the entire Sim-to-sim workflow for autonomous navigation and locomotion with deeprobotics M20. This repo is built on top of DeepRobotics official [SDK](https://github.com/DeepRoboticsLab/sdk_deploy.git)
 
-![](/assets/simulation.png)
+![](assets/M20_autonomous.gif)
+Autonomous waypoint navigation using LiDAR-intertial SLAM with SWAGGER + Nav2 Router
 
 ## Hardware Requirements
 
@@ -20,71 +21,47 @@ This repository uses ROS2 to implement the entire Sim-to-sim and Sim-to-real wor
 
 ### ROS2 Humble
 Install ROS2 Humble on Ubuntu 22.04:
+
+
+### Install all dependency packages
+
 ```bash
-# Follow official instructions at:
-# https://docs.ros.org/en/humble/Installation.html
+sudo apt-get install ignition-fortress ros-humble-ros-gz-sim ros-humble-ros-gz-bridge ros-humble-ros-gz-interfaces ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-nav2-amcl ros-humble-nav2-map-server ros-humble-nav2-lifecycle-manager ros-humble-robot-localization ros-humble-pointcloud-to-laserscan libevdev-dev python3-numpy
 ```
-
-### Gazebo Ignition Fortress
-Install Gazebo Ignition Fortress for simulation:
-```bash
-# Install Gazebo Ignition Fortress
-sudo apt-get update
-sudo apt-get install ignition-fortress
-
-# Install ROS2-Gazebo bridge packages
-sudo apt-get install ros-humble-ros-gz-sim ros-humble-ros-gz-bridge ros-humble-ros-gz-interfaces
-```
-
-## Sim-to-sim (Gazebo Ignition Fortress)
 
 ### Build
 
 ```bash
-git clone https://github.com/DeepRoboticsLab/sdk_deploy.git
+git clone --recursive https://github.com/AI-DA-STC/near-sdk-deploy-M20.git
 
 # Compile
-cd sdk_deploy
 source /opt/ros/humble/setup.bash
-colcon build --packages-up-to rl_deploy --cmake-args -DBUILD_PLATFORM=x86
+cd near-sdk-deploy-M20
+colcon build --cmake-args -DBUILD_PLATFORM=x86
 ```
 
-### Single Robot
+### Setup SWAGGER 
+- A python package that generates sparse waypoint graphs from occupancy grid maps for route planning.
+- Follow the [README](src/SWAGGER/README.md) to setup a separate conda env and install dependencies
+
+### Usage - SLAM using GLIM
 
 ```bash
-
 # Terminal 1: Launch simulation with lidar
 source install/setup.bash
 ros2 launch rl_deploy gazebo_velodyne.launch.py
-
-# Terminal 2: Launch GLIM for SLAM
-ros2 launch rl_deploy glim_slam.launch.py
-
-# Terminal 3: Control robot (use namespace)
-ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20
 ```
-
-### SWAGGER highlevel waypoint graph generation
 
 ```bash
-python3 scripts/generate_graph.py --map-path /home/krishna/Workspace/near-sdk-deploy-M20/maps/edifice_SLAM_v0_2d.pgm --resolution 0.05 --x_offset -15.3753 --y_offset -28.6156 --safety_distance 0.5 --output_dir /home/krishna/Workspace/near-sdk-deploy-M20/maps --occupancy_threshold 50
+# Terminal 2: Launch GLIM for SLAM
+ros2 launch rl_deploy glim_slam.launch.py
 ```
+> - To save the map after loop closure, click on the top left "file" to save a .ply file.
 
+<details>
+<summary><strong>GLIM Config Changes</strong></summary>
 
-### Keyboard controls
-
-<span style="color: red;">**Note:**</span>
-> - When the robot dog stands up, it may become stuck due to self-collision in the simulation. This is not a bug; please try again.
-> - **z**: default position
-> - **c**: rl control default position
-> - **wasd**: forward/leftward/backward/rightward
-> - **q,e**: clockwise/counter clockwise
-
-
-
-### GLIM Config Changes
-
-Note : The following changes are already made
+Note : The following changes are made to GLIM SLAM config
 
 **`config_ros.json`** — Update ROS2 topics:
 
@@ -109,5 +86,54 @@ Note : The following changes are already made
 > - IMU pose on M20: `(0.0632, -0.0268, -0.0435)`
 > - Velodyne pose on M20: `(0.3, 0, 0.145)`
 > - T_lidar_imu = Velodyne_pose - IMU_pose = `(-0.2368, -0.0268, -0.1885)`, identity rotation
+
+</details>
+
+```bash
+# Terminal 3: Teleoperate robot with keyboard
+ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20
+```
+keyboard controls : 
+> - **z**: default position
+> - **c**: rl control default position
+> - **wasd**: forward/leftward/backward/rightward
+> - **q,e**: clockwise/counter clockwise
+
+### Usage - autonomous waypoint navigation
+
+```bash
+#convert .ply to 2D occupancy costmap
+python src/M20_sdk_deploy/scripts/ply_to_2d_map.py ply /path/to/.ply -o /path/to/output_dir --z-min 0.1 --z-max 10
+
+#z_min and z_max are min and max height for obstacle slice (in m)
+```
+> - the above script should generate a .pgm and a .yaml file
+
+```bash
+#generate a sparse waypoint graph using the 2d costmap
+cd src/SWAGGER
+conda activate swagger
+python3 scripts/generate_graph.py --map-path path/to/.pgm --resolution 0.05 --x_offset -15.3753 --y_offset -28.6156 --safety_distance 0.5 --output_dir /path/to/maps --occupancy_threshold 50
+```
+pls refer to the SWAGGER [README](src/SWAGGER/README.md) to understand more about the arguments usage
+
+In separate terminals run the following : 
+```bash
+# Simulation 
+ros2 launch rl_deploy gazebo_velodyne.launch.py
+# localization 
+ros2 launch rl_deploy amcl_localization.launch.py
+# route server 
+ros2 launch rl_deploy route_server.launch.py
+#path follower controller
+ros2 launch rl_deploy path_follower.launch.py
+# RL deploy in autonomous mode (instead of keyboard)
+ros2 run rl_deploy rl_deploy --ros2-cmd
+```
+
+Visualization in Rviz: set "2D Pose Estimate" → then "2D Goal Pose"
+Robot will follow the SWAGGER graph path automatically
+
+> - Safety: if no /M20/cmd_vel is received for >0.5 s (e.g., path follower crashes), the C++ interface zeros all velocity commands — the robot stops safely.
 
 

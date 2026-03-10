@@ -64,6 +64,12 @@ ros2 launch rl_deploy glim_slam.launch.py
 ros2 run rl_deploy rl_deploy --ros-args -r __ns:=/M20
 ```
 
+### SWAGGER highlevel waypoint graph generation
+
+```bash
+python3 scripts/generate_graph.py --map-path /home/krishna/Workspace/near-sdk-deploy-M20/maps/edifice_SLAM_v0_2d.pgm --resolution 0.05 --x_offset -15.3753 --y_offset -28.6156 --safety_distance 0.5 --output_dir /home/krishna/Workspace/near-sdk-deploy-M20/maps --occupancy_threshold 50
+```
+
 
 ### Keyboard controls
 

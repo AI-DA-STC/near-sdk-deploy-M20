@@ -25,6 +25,8 @@ endif()
 # 查找依赖包
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(drdds REQUIRED)
 
 set(THIRD_PARTY ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
@@ -64,6 +66,8 @@ set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${THIRD_PARTY}/o
 
 ament_target_dependencies(rl_deploy
   rclcpp
+  geometry_msgs
+  std_msgs
   drdds
 )
 if(BUILD_PLATFORM STREQUAL "arm")
@@ -99,6 +103,9 @@ install(PROGRAMS
   interface/robot/simulation/gazebo_controller_ros2.py
   interface/robot/simulation/mujoco_simulation_ros2.py
   scripts/ply_to_2d_map.py
+  scripts/pose_ape_evaluator.py
+  scripts/route_server.py
+  scripts/path_follower.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

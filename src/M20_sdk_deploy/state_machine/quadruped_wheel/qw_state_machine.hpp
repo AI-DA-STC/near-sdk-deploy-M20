@@ -17,6 +17,7 @@
 #include "quadruped_wheel/joint_damping_state.hpp"
 #include "quadruped_wheel/rl_control_state.hpp"
 #include "keyboard_interface.hpp"
+#include "ros2_cmdvel_interface.hpp"
 #include "hardware/m20_interface.hpp"
 
 namespace qw{
@@ -39,20 +40,22 @@ public:
     ~QwStateMachine(){}
 
     void Start(){
+        // Create robot interface first — kROS2 needs its rclcpp node
+        if(robot_name_ == RobotName::M20){
+            ri_ptr_ = std::make_shared<M20Interface>("M20");
+            cp_ptr_ = std::make_shared<ControlParameters>(robot_name_);
+        }
+
         if(remote_cmd_type_ == RemoteCommandType::kKeyBoard){
             uc_ptr_ = std::make_shared<KeyboardInterface>(robot_name_);
+        }else if(remote_cmd_type_ == RemoteCommandType::kROS2){
+            uc_ptr_ = std::make_shared<interface::ROS2CmdVelInterface>(
+                robot_name_, ri_ptr_->get_node());
         }else{
             std::cerr << "error user command interface! " << std::endl;
             exit(0);
         }
         uc_ptr_->SetMotionStateFeedback(&StateBase::msfb_);
-
-        if(robot_name_ == RobotName::M20){
-   
-            ri_ptr_ = std::make_shared<M20Interface>("M20");
-            
-            cp_ptr_ = std::make_shared<ControlParameters>(robot_name_);
-        }
 
         std::shared_ptr<ControllerData> data_ptr = std::make_shared<ControllerData>();
         data_ptr->ri_ptr = ri_ptr_;

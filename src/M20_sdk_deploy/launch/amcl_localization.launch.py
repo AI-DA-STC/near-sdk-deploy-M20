@@ -125,6 +125,6 @@ def generate_launch_description():
             map_server,
             amcl,
             lifecycle_manager,
-            ekf_node,
+            ekf_node
         ]
     )

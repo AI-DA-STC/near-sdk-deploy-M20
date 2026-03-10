@@ -28,6 +28,7 @@ namespace types{
 
     enum RemoteCommandType{
         kKeyBoard = 0,
+        kROS2     = 1,
     };
     
 

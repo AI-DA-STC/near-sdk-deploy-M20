@@ -5,6 +5,10 @@ This repository uses ROS2 to implement the entire Sim-to-sim workflow for autono
 ![](assets/M20_autonomous.gif)
 Autonomous waypoint navigation using LiDAR-intertial SLAM with SWAGGER + Nav2 Router
 
+## High level architecture
+
+![](assets/high_level_arch.png)
+
 ## Hardware Requirements
 
 **Tested Configuration:**

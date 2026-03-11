@@ -106,6 +106,8 @@ install(PROGRAMS
   scripts/pose_ape_evaluator.py
   scripts/route_server.py
   scripts/path_follower.py
+  scripts/m20_imu_adapter.py
+  scripts/m20_cmd_vel_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

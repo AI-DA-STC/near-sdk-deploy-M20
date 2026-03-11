@@ -4,3 +4,6 @@
 [submodule "src/src/rf2o_laser_odometry"]
 	path = src/src/rf2o_laser_odometry
 	url = https://github.com/MAPIRlab/rf2o_laser_odometry.git
+[submodule "src/cmu_autonomy_stack"]
+	path = src/cmu_autonomy_stack
+	url = https://github.com/AI-DA-STC/CMU_autonomy_stack_go2.git

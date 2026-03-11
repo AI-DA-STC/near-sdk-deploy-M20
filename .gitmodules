@@ -1,0 +1,6 @@
+[submodule "src/src/SWAGGER"]
+	path = src/src/SWAGGER
+	url = https://github.com/nvidia-isaac/SWAGGER.git
+[submodule "src/src/rf2o_laser_odometry"]
+	path = src/src/rf2o_laser_odometry
+	url = https://github.com/MAPIRlab/rf2o_laser_odometry.git

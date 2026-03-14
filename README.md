@@ -132,7 +132,16 @@ ros2 launch rl_deploy route_server.launch.py
 #path follower controller
 ros2 launch rl_deploy path_follower.launch.py
 # RL deploy in autonomous mode (instead of keyboard)
-ros2 run rl_deploy rl_deploy --ros2-cmd
+ros2 run rl_deploy rl_deploy --ros2-cmd -r __ns:=/M20
+```
+
+To set stand up state 
+```bash
+ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 1}"
+```
+To set RL control state
+```bash
+ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 6}"
 ```
 
 Visualization in Rviz: set "2D Pose Estimate" → then "2D Goal Pose"
@@ -141,3 +150,22 @@ Robot will follow the SWAGGER graph path automatically
 > - Safety: if no /M20/cmd_vel is received for >0.5 s (e.g., path follower crashes), the C++ interface zeros all velocity commands — the robot stops safely.
 
 
+### Usage - autonomous waypoint navigation using CMU nav stack
+
+# 1. Simulation + sensor bridges
+ros2 launch rl_deploy gazebo_velodyne.launch.py
+
+# 2. Topic relays for CMU stack inputs
+ros2 run topic_tools relay /M20/LIDAR/VELODYNE /velodyne_points &
+ros2 run topic_tools relay /M20/IMU /imu/data &
+
+# 3. Full CMU autonomy stack (Point-LIO + local_planner + far_planner + terrain + rviz)
+ros2 launch vehicle_simulator system_real_robot_m20.launch sim:=true use_sim_time:=true
+
+# 4. M20 RL deploy in ROS2 cmd mode
+ros2 run rl_deploy rl_deploy --ros2-cmd -r __ns:=/M20
+
+# 5. State machine: standup → RL control
+ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 1}"
+# wait ~4s for standup
+ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 6}"

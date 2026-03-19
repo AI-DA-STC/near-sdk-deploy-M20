@@ -152,17 +152,24 @@ Robot will follow the SWAGGER graph path automatically
 
 ### Usage - autonomous waypoint navigation using CMU nav stack
 
+
+
+
 # 1. Simulation + sensor bridges
+conda deactivate
 ros2 launch rl_deploy gazebo_velodyne.launch.py
 
 # 2. Topic relays for CMU stack inputs
-ros2 run topic_tools relay /M20/LIDAR/VELODYNE /velodyne_points &
-ros2 run topic_tools relay /M20/IMU /imu/data &
+conda activate m20_rl_deploy
+python src/M20_sdk_deploy/scripts/velodyne_timestamp_injector.py 
+ros2 run topic_tools relay /M20/IMU /imu/data --ros-args -r __node:=imu_relay &
 
 # 3. Full CMU autonomy stack (Point-LIO + local_planner + far_planner + terrain + rviz)
+conda activate m20_rl_deploy
 ros2 launch vehicle_simulator system_real_robot_m20.launch sim:=true use_sim_time:=true
 
 # 4. M20 RL deploy in ROS2 cmd mode
+conda deactivate
 ros2 run rl_deploy rl_deploy --ros2-cmd -r __ns:=/M20
 
 # 5. State machine: standup → RL control

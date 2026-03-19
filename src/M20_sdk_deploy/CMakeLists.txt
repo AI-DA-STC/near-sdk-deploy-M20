@@ -108,6 +108,7 @@ install(PROGRAMS
   scripts/path_follower.py
   scripts/m20_imu_adapter.py
   scripts/m20_cmd_vel_bridge.py
+  scripts/velodyne_timestamp_injector.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

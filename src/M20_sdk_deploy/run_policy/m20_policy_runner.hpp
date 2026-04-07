@@ -230,9 +230,15 @@ public:
         }
         tmp_action_eigen += dof_default_eigen_robot;
         
+        // Zero wheel velocities when no velocity command is given to prevent
+        // the RL policy's small non-zero outputs from causing wheel drift.
+        bool has_cmd = (std::abs(uc.forward_vel_scale) > 1e-3f ||
+                        std::abs(uc.side_vel_scale)    > 1e-3f ||
+                        std::abs(uc.turnning_vel_scale)> 1e-3f);
+
         for (int i = 0; i < 4; ++i){
             robot_action.goal_joint_pos.segment(i*4, 3) = tmp_action_eigen.segment(i*4, 3);
-            robot_action.goal_joint_vel(i*4+3) = tmp_action_eigen(i*4+3);
+            robot_action.goal_joint_vel(i*4+3) = has_cmd ? tmp_action_eigen(i*4+3) : 0.0f;
         }
 
         

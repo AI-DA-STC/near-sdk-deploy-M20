@@ -125,13 +125,9 @@ In separate terminals run the following :
 ```bash
 # Simulation 
 ros2 launch rl_deploy gazebo_velodyne.launch.py
-# localization 
-ros2 launch rl_deploy amcl_localization.launch.py
-# route server 
-ros2 launch rl_deploy route_server.launch.py
-#path follower controller
-ros2 launch rl_deploy path_follower.launch.py
-# RL deploy in autonomous mode (instead of keyboard)
+# launch navigation
+ros2 launch rl_deploy navigation.launch.py
+# RL controller in autonomous mode (instead of keyboard)
 ros2 run rl_deploy rl_deploy --ros2-cmd -r __ns:=/M20
 ```
 
@@ -143,6 +139,20 @@ To set RL control state
 ```bash
 ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 6}"
 ```
+
+Pause navigation
+```bash
+ros2 service call /linear_orchestrator/pause std_srvs/srv/Trigger
+```
+
+Stop navigation
+```bash
+ros2 service call /linear_orchestrator/stop std_srvs/srv/Trigger
+```
+
+Resume navigation
+publish the {data:1} and {data:6} commands again
+
 
 Visualization in Rviz: set "2D Pose Estimate" → then "2D Goal Pose"
 Robot will follow the SWAGGER graph path automatically

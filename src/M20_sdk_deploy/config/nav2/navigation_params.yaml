@@ -1,0 +1,344 @@
+# =============================================================================
+# navigation_params.yaml — Consolidated Nav2 navigation stack parameters
+#
+# Consolidates: amcl_params.yaml, ekf_params.yaml, dwb_controller_params.yaml,
+#               nav2_params.yaml, and adds planner_server, smoother_server,
+#               global_costmap configuration.
+#
+# Launch with: navigation.launch.py
+# =============================================================================
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOCALIZATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+map_server:
+  ros__parameters:
+    use_sim_time: true
+    yaml_filename: ""  # Set via launch argument
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    # Frames
+    base_frame_id: base_link
+    odom_frame_id: odom
+    global_frame_id: map
+    # Topic
+    scan_topic: /M20/scan
+    # Particle filter
+    min_particles: 500
+    max_particles: 2000
+    # Motion model (omni for quadruped — supports lateral/crab walking)
+    robot_model_type: nav2_amcl::OmniMotionModel
+    alpha1: 0.2   # rotation from rotation
+    alpha2: 0.2   # rotation from translation
+    alpha3: 0.2   # translation from translation
+    alpha4: 0.2   # translation from rotation
+    alpha5: 0.2   # translation noise
+    # Laser model
+    laser_model_type: likelihood_field
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 70.0
+    laser_min_range: 0.9
+    max_beams: 60
+    # Pose updates
+    update_min_d: 0.25
+    update_min_a: 0.2
+    set_initial_pose: true
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+    # Transform tolerance
+    transform_tolerance: 1.0
+
+ekf_node:
+  ros__parameters:
+    use_sim_time: true
+    frequency: 50.0
+    two_d_mode: true
+    publish_tf: true
+    # Frames
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # --- Source 0: rf2o scan-matching odometry (x, y only) ---
+    odom0: /odom_rf2o
+    odom0_config: [true,  true,  false,   # x, y, z
+                    false, false, false,   # roll, pitch, yaw (IMU owns heading)
+                    false, false, false,   # vx, vy, vz
+                    false, false, false,   # roll_vel, pitch_vel, yaw_vel
+                    false, false, false]   # ax, ay, az
+    odom0_differential: true
+
+    # --- Source 1: IMU (yaw angular velocity only) ---
+    imu0: /M20/IMU
+    imu0_config: [false, false, false,   # x, y, z
+                   false, false, false,   # roll, pitch, yaw
+                   false, false, false,   # vx, vy, vz
+                   false, false, true,    # roll_vel, pitch_vel, yaw_vel
+                   false, false, false]   # ax, ay, az
+    imu0_differential: false
+    imu0_relative: false
+    imu0_remove_gravitational_acceleration: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROUTE SERVER (SWAGGER graph planner)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+route_server:
+  ros__parameters:
+
+    # ── Graph source ──────────────────────────────────────────────────────────
+    graph_file: "/home/krishna/Workspace/near-sdk-deploy-M20/maps/graph.gml"   # Override via launch argument
+    map_yaml: "/home/krishna/Workspace/near-sdk-deploy-M20/maps/edifice_SLAM_v0_2d.yaml"     # Override via launch argument
+    frame_id: "map"
+    base_frame: "base_link"
+
+    # ── Path densification ────────────────────────────────────────────────────
+    interpolation_resolution: 0.05
+
+    # ── Edge scoring weights ──────────────────────────────────────────────────
+    w_distance:  1.0
+    w_semantic:  0.5
+    w_time:      0.0
+    robot_speed: 0.5
+
+    # ── Topology filter ───────────────────────────────────────────────────────
+    skeleton_only: false
+    delaunay_multiplier: 1.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLANNER SERVER (SmacPlanner2D — costmap-aware global path planning)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.5                    # goal tolerance in costmap cells
+      allow_unknown: true               # allow planning through unknown space
+      max_iterations: 1000000           # practically unlimited
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0            # seconds
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SMOOTHER SERVER (Savitzky-Golay — polynomial least-squares path smoothing)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: true
+    smoother_plugins: ["SavitzkyGolay"]
+    SavitzkyGolay:
+      plugin: "nav2_smoother::SavitzkyGolaySmoother"
+      do_refinement: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONTROLLER SERVER (DWB — local planner with obstacle avoidance)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    odom_topic: "/odometry/filtered"
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.3
+      movement_time_allowance: 15.0
+
+    goal_checker:
+      plugin: "nav2_controller::StoppedGoalChecker"
+      trans_stopped_velocity: 0.1
+      rot_stopped_velocity: 0.1
+      xy_goal_tolerance: 0.4
+      yaw_goal_tolerance: 0.5
+
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+
+      # ── Velocity limits (M20 hardware) ──
+      min_vel_x: -0.1
+      max_vel_x: 0.5
+      min_vel_y: -0.25
+      max_vel_y: 0.25
+      max_vel_theta: 1.0
+      min_speed_xy: 0.0
+      max_speed_xy: 0.5
+      min_speed_theta: 0.0
+
+      # ── Acceleration limits ──
+      acc_lim_x: 1.0
+      acc_lim_y: 0.5
+      acc_lim_theta: 2.0
+      decel_lim_x: -1.5
+      decel_lim_y: -0.75
+      decel_lim_theta: -3.0
+
+      # ── Trajectory simulation ──
+      sim_time: 2.5
+      vx_samples: 30
+      vy_samples: 10
+      vtheta_samples: 30
+      transform_tolerance: 0.5
+      short_circuit_trajectory_evaluation: true
+
+      # ── Trajectory generation ──
+      trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
+      sim_granularity: 0.05
+      angular_sim_granularity: 0.025
+
+      # ── Path pruning ──
+      prune_distance: 1.0
+      prune_plan: true
+
+      # ── DWB critics ──
+      critics:
+        - "ObstacleFootprint"
+        - "GoalDist"
+        - "GoalAlign"
+        - "PathDist"
+        - "PathAlign"
+
+      ObstacleFootprint:
+        scale: 0.1
+      PathDist:
+        scale: 88.0
+      PathAlign:
+        scale: 28.0
+        forward_point_distance: 0.325
+      GoalDist:
+        scale: 14.0
+      GoalAlign:
+        scale: 14.0
+        forward_point_distance: 0.325
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COSTMAPS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: true
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 5
+      height: 5
+      resolution: 0.05
+      update_frequency: 10.0
+      publish_frequency: 4.0
+      transform_tolerance: 0.5
+      footprint: "[[-0.41, -0.35], [-0.41, 0.35], [0.41, 0.35], [0.41, -0.35]]"
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: m20_scan
+        m20_scan:
+          topic: /M20/scan
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          max_obstacle_height: 2.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.3
+          raytrace_max_range: 7.0
+          raytrace_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.55
+        cost_scaling_factor: 3.0
+
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: true
+      global_frame: map
+      robot_base_frame: base_link
+      resolution: 0.05
+      track_unknown_space: true
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      transform_tolerance: 0.5
+      footprint: "[[-0.41, -0.35], [-0.41, 0.35], [0.41, 0.35], [0.41, -0.35]]"
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+        observation_sources: m20_scan
+        m20_scan:
+          topic: /M20/scan
+          data_type: "LaserScan"
+          marking: true
+          clearing: true
+          max_obstacle_height: 2.0
+          obstacle_max_range: 10.0
+          obstacle_min_range: 0.9
+          raytrace_max_range: 12.0
+          raytrace_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.55
+        cost_scaling_factor: 3.0
+
+      always_send_full_costmap: true
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BEHAVIOR SERVER (recovery behaviors — BackUp)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["backup"]
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LIFECYCLE MANAGER (single manager for all Nav2 lifecycle nodes)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    use_sim_time: true
+    autostart: true
+    node_names:
+      - map_server
+      - amcl
+      - planner_server
+      - smoother_server
+      - controller_server
+      - behavior_server
+    bond_timeout: 0.0

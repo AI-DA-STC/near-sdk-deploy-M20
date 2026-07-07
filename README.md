@@ -123,6 +123,8 @@ pls refer to the SWAGGER [README](src/SWAGGER/README.md) to understand more abou
 
 In separate terminals run the following : 
 ```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
 # Simulation 
 ros2 launch rl_deploy gazebo_velodyne.launch.py
 # launch navigation

@@ -2,4 +2,5 @@ build/
 install/
 log/
 glim_logs/
+navigation_logs/
 .claude/

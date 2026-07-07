@@ -28,16 +28,37 @@ Prerequisite launches:
 """
 
 import os
+from datetime import datetime
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.logging import launch_config
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from pyprojroot import here
 
 PROJECT_ROOT = here()
 PACKAGE_PATH = PROJECT_ROOT / "src" / "M20_sdk_deploy"
+
+# ── Run logs: navigation_logs/<timestamp>/ at the project root ──────────
+# Per-node rcutils .log files land here directly (via ROS_LOG_DIR below).
+# launch.log is already bound to ~/.ros/log/<run>/ before this file is
+# imported, so it is exposed here as a symlink instead of being moved.
+LOG_DIR = PROJECT_ROOT / "navigation_logs" / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+_launch_log = os.path.join(launch_config.log_dir, "launch.log")
+try:
+    (LOG_DIR / "launch.log").symlink_to(_launch_log)
+except FileExistsError:
+    pass
+
+# Convenience symlink: navigation_logs/latest -> newest run
+_latest = LOG_DIR.parent / "latest"
+if _latest.is_symlink() or _latest.exists():
+    _latest.unlink()
+_latest.symlink_to(LOG_DIR, target_is_directory=True)
 
 
 def generate_launch_description():
@@ -76,6 +97,15 @@ def generate_launch_description():
             default_value=default_params,
             description="Path to consolidated navigation params YAML",
         ),
+    ]
+
+    # ── Logging environment for all launched nodes ────────────────────────
+    log_env = [
+        # rcutils writes each node's own .log file into this run's directory
+        SetEnvironmentVariable("ROS_LOG_DIR", str(LOG_DIR)),
+        # Python nodes (route_server, orchestrator, bridge) flush output
+        # immediately so nothing is lost from launch.log on crash
+        SetEnvironmentVariable("PYTHONUNBUFFERED", "1"),
     ]
 
     # ══════════════════════════════════════════════════════════════════════
@@ -256,6 +286,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         declare_args
+        + log_env
         + [
             # Localization (order matters for TF readiness)
             static_tf_gazebo_velodyne,

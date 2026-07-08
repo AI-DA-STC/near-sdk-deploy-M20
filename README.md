@@ -155,6 +155,11 @@ ros2 service call /linear_orchestrator/stop std_srvs/srv/Trigger
 Resume navigation
 publish the {data:1} and {data:6} commands again
 
+To take over control
+```bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
 
 Visualization in Rviz: set "2D Pose Estimate" → then "2D Goal Pose"
 Robot will follow the SWAGGER graph path automatically

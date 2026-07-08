@@ -183,17 +183,17 @@ controller_server:
       min_speed_theta: 0.0
 
       # ── Acceleration limits ──
-      acc_lim_x: 1.0
-      acc_lim_y: 0.5
+      acc_lim_x: 1.5
+      acc_lim_y: 0.75
       acc_lim_theta: 2.0
       decel_lim_x: -1.5
       decel_lim_y: -0.75
       decel_lim_theta: -3.0
 
       # ── Trajectory simulation ──
-      sim_time: 2.5
+      sim_time: 2.0
       vx_samples: 30
-      vy_samples: 10
+      vy_samples: 20
       vtheta_samples: 30
       transform_tolerance: 0.5
       short_circuit_trajectory_evaluation: true
@@ -218,15 +218,15 @@ controller_server:
       ObstacleFootprint:
         scale: 5.0
       PathDist:
-        scale: 32.0
+        scale: 48.0
       PathAlign:
         scale: 32.0
-        forward_point_distance: 0.325
+        forward_point_distance: 0.1
       GoalDist:
-        scale: 24.0
+        scale: 10.0
       GoalAlign:
         scale: 24.0
-        forward_point_distance: 0.325
+        forward_point_distance: 0.1
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COSTMAPS
@@ -245,7 +245,7 @@ local_costmap:
       update_frequency: 10.0
       publish_frequency: 4.0
       transform_tolerance: 0.5
-      footprint: "[[-0.41, -0.35], [-0.41, 0.35], [0.41, 0.35], [0.41, -0.35]]"
+      footprint: "[[-0.41, -0.215], [-0.41, 0.215], [0.41, 0.215], [0.41, -0.215]]"
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
@@ -261,7 +261,7 @@ local_costmap:
           obstacle_max_range: 6.0
           obstacle_min_range: 0.3
           raytrace_max_range: 7.0
-          raytrace_min_range: 0.9
+          raytrace_min_range: 0.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -281,27 +281,12 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       transform_tolerance: 0.5
-      footprint: "[[-0.41, -0.35], [-0.41, 0.35], [0.41, 0.35], [0.41, -0.35]]"
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      footprint: "[[-0.41, -0.215], [-0.41, 0.215], [0.41, 0.215], [0.41, -0.215]]"
+      plugins: ["static_layer", "inflation_layer"]
 
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
-
-      obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: true
-        observation_sources: m20_scan
-        m20_scan:
-          topic: /M20/scan
-          data_type: "LaserScan"
-          marking: true
-          clearing: true
-          max_obstacle_height: 2.0
-          obstacle_max_range: 10.0
-          obstacle_min_range: 0.9
-          raytrace_max_range: 12.0
-          raytrace_min_range: 0.9
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -314,17 +299,17 @@ global_costmap:
 # BEHAVIOR SERVER (recovery behaviors — BackUp)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-behavior_server:
-  ros__parameters:
-    use_sim_time: true
-    local_costmap_topic: local_costmap/costmap_raw
-    global_costmap_topic: global_costmap/costmap_raw
-    local_footprint_topic: local_costmap/published_footprint
-    global_footprint_topic: global_costmap/published_footprint
-    cycle_frequency: 10.0
-    behavior_plugins: ["backup"]
-    backup:
-      plugin: "nav2_behaviors/BackUp"
+# behavior_server:
+#   ros__parameters:
+#     use_sim_time: true
+#     local_costmap_topic: local_costmap/costmap_raw
+#     global_costmap_topic: global_costmap/costmap_raw
+#     local_footprint_topic: local_costmap/published_footprint
+#     global_footprint_topic: global_costmap/published_footprint
+#     cycle_frequency: 10.0
+#     behavior_plugins: ["backup"]
+#     backup:
+#       plugin: "nav2_behaviors/BackUp"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LIFECYCLE MANAGER (single manager for all Nav2 lifecycle nodes)
@@ -340,5 +325,4 @@ lifecycle_manager_navigation:
       - planner_server
       - smoother_server
       - controller_server
-      - behavior_server
     bond_timeout: 0.0

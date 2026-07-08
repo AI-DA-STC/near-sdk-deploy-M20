@@ -244,14 +244,15 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
-    # Behavior server — recovery behaviors (BackUp)
-    behavior_server = Node(
-        package="nav2_behaviors",
-        executable="behavior_server",
-        name="behavior_server",
-        output="screen",
-        parameters=[params_file, {"use_sim_time": use_sim_time}],
-    )
+    # Behavior server — recovery behaviors (BackUp) — DISABLED
+    # (orchestrator skips BACKUP recovery when the action server is absent)
+    # behavior_server = Node(
+    #     package="nav2_behaviors",
+    #     executable="behavior_server",
+    #     name="behavior_server",
+    #     output="screen",
+    #     parameters=[params_file, {"use_sim_time": use_sim_time}],
+    # )
 
     # Linear orchestrator — drives planner->smoother->controller pipeline
     linear_orchestrator = Node(
@@ -301,7 +302,7 @@ def generate_launch_description():
             planner_server,
             smoother_server,
             controller_server,
-            behavior_server,
+            # behavior_server,  # disabled — BackUp recovery not used
             linear_orchestrator,
             cmd_vel_bridge,
             # Lifecycle (activates map_server, amcl, planner, smoother, controller)

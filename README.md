@@ -2,12 +2,9 @@
 
 This repository uses ROS2 to implement the entire Sim-to-sim workflow for autonomous navigation and locomotion with deeprobotics M20. This repo is built on top of DeepRobotics official [SDK](https://github.com/DeepRoboticsLab/sdk_deploy.git)
 
-![](assets/M20_autonomous.gif)
-Autonomous waypoint navigation using LiDAR-intertial SLAM with SWAGGER + Nav2 Router
-
 ## High level architecture
 
-![](assets/high_level_arch.png)
+![](assets/glim_nav2_arch.png)
 
 ## Hardware Requirements
 
@@ -161,35 +158,3 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
 
-Visualization in Rviz: set "2D Pose Estimate" → then "2D Goal Pose"
-Robot will follow the SWAGGER graph path automatically
-
-> - Safety: if no /M20/cmd_vel is received for >0.5 s (e.g., path follower crashes), the C++ interface zeros all velocity commands — the robot stops safely.
-
-
-### Usage - autonomous waypoint navigation using CMU nav stack
-
-
-
-
-# 1. Simulation + sensor bridges
-conda deactivate
-ros2 launch rl_deploy gazebo_velodyne.launch.py
-
-# 2. Topic relays for CMU stack inputs
-conda activate m20_rl_deploy
-python src/M20_sdk_deploy/scripts/velodyne_timestamp_injector.py 
-ros2 run topic_tools relay /M20/IMU /imu/data --ros-args -r __node:=imu_relay &
-
-# 3. Full CMU autonomy stack (Point-LIO + local_planner + far_planner + terrain + rviz)
-conda activate m20_rl_deploy
-ros2 launch vehicle_simulator system_real_robot_m20.launch sim:=true use_sim_time:=true
-
-# 4. M20 RL deploy in ROS2 cmd mode
-conda deactivate
-ros2 run rl_deploy rl_deploy --ros2-cmd -r __ns:=/M20
-
-# 5. State machine: standup → RL control
-ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 1}"
-# wait ~4s for standup
-ros2 topic pub -1 /M20/target_mode std_msgs/msg/Int32 "{data: 6}"

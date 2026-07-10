@@ -9,9 +9,9 @@ Nav2 pipeline in a linear sequence:
   2. SmoothPath         (smoother_server — Savitzky-Golay smoothing)
   3. FollowPath         (controller_server — DWB obstacle-avoidant tracking)
 
-Recovery state machine on any pipeline failure:
+Retry logic on any pipeline failure:
 
-  WAIT (2s) -> replan -> BACKUP (1m) -> replan -> CLEAR_COSTMAPS -> replan -> ABORT
+  path blocked -> WAIT (1s) -> replan -> re-run pipeline (max 3 retries) -> ABORT
 
 Services:
   ~/stop   (std_srvs/Trigger)  — cancel goals, zero vel, JointDamping -> Idle
@@ -25,12 +25,9 @@ Action clients:
   compute_path_to_pose  (nav2_msgs/action/ComputePathToPose)
   smooth_path           (nav2_msgs/action/SmoothPath)
   follow_path           (nav2_msgs/action/FollowPath)
-  backup                (nav2_msgs/action/BackUp)
 
 Service clients:
   /route_server/get_plan                              (nav_msgs/srv/GetPlan)
-  /global_costmap/clear_entirely_global_costmap       (nav2_msgs/srv/ClearEntireCostmap)
-  /local_costmap/clear_entirely_local_costmap         (nav2_msgs/srv/ClearEntireCostmap)
 """
 
 from enum import IntEnum
@@ -63,15 +60,15 @@ class LinearOrchestrator(Node):
         super().__init__("linear_orchestrator")
 
         # Parameters
-#        self.declare_parameter("max_retries", 3)
-#        self.declare_parameter("replan_delay", 2.0)
+        self.declare_parameter("max_retries", 3)
+        self.declare_parameter("replan_delay", 1.0)
         self.declare_parameter("planner_id", "GridBased")
         self.declare_parameter("smoother_id", "SavitzkyGolay")
 #        self.declare_parameter("backup_distance", 1.0)
 #        self.declare_parameter("backup_speed", 0.1)
 #        self.declare_parameter("backup_time_allowance", 15.0)
-#        self._max_retries = self.get_parameter("max_retries").value
-#        self._replan_delay = self.get_parameter("replan_delay").value
+        self._max_retries = self.get_parameter("max_retries").value
+        self._replan_delay = self.get_parameter("replan_delay").value
         self._planner_id = self.get_parameter("planner_id").value
         self._smoother_id = self.get_parameter("smoother_id").value
 #        self._backup_distance = self.get_parameter("backup_distance").value
@@ -102,10 +99,10 @@ class LinearOrchestrator(Node):
 #            "/local_costmap/clear_entirely_local_costmap",
 #        )
 #
-#        # Route server replan service
-#        self._get_plan_cli = self.create_client(
-#            GetPlan, "/route_server/get_plan"
-#        )
+        # Route server replan service
+        self._get_plan_cli = self.create_client(
+            GetPlan, "/route_server/get_plan"
+        )
 
         # Publishers for stop/pause
         self._cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
@@ -117,16 +114,17 @@ class LinearOrchestrator(Node):
 
         # State
         self._follow_goal_handle = None
-#        self._recovery_level = RecoveryLevel.WAIT
-#        self._original_goal: PoseStamped | None = None
-#        self._amcl_pose: PoseWithCovarianceStamped | None = None
-#        self._replan_timer = None
+        self._retry_count = 0
+        self._original_goal: PoseStamped | None = None
+        self._amcl_pose: PoseWithCovarianceStamped | None = None
+        self._replan_timer = None
         self._navigating = False
+        self._expect_replan_path = False
 
-#        # Subscribe to AMCL pose for replan start position
-#        self.create_subscription(
-#            PoseWithCovarianceStamped, "/amcl_pose", self._amcl_cb, 10
-#        )
+        # Subscribe to AMCL pose for replan start position
+        self.create_subscription(
+            PoseWithCovarianceStamped, "/amcl_pose", self._amcl_cb, 10
+        )
 
         # Subscribe to route_server path (transient-local for late joiners)
         latched_qos = QoSProfile(
@@ -139,16 +137,17 @@ class LinearOrchestrator(Node):
         self.get_logger().info(
             "LinearOrchestrator ready — pipeline: "
             f"planner({self._planner_id}) -> smoother({self._smoother_id}) "
-            f"-> controller | recovery: WAIT -> BACKUP -> CLEAR_COSTMAPS -> ABORT"
+            f"-> controller | recovery: WAIT({self._replan_delay}s) -> replan, "
+            f"max {self._max_retries} retries -> ABORT"
         )
 
     # ── Stop / Pause services ────────────────────────────────────────────────
 
     def _cancel_all_goals(self) -> None:
         """Cancel any active FollowPath goal and clear replan timer."""
-#        if self._replan_timer is not None:
-#            self._replan_timer.cancel()
-#            self._replan_timer = None
+        if self._replan_timer is not None:
+            self._replan_timer.cancel()
+            self._replan_timer = None
 
         if (
             self._follow_goal_handle is not None
@@ -158,6 +157,7 @@ class LinearOrchestrator(Node):
             self._follow_goal_handle = None
 
         self._navigating = False
+        self._expect_replan_path = False
 
     def _publish_zero_velocity(self) -> None:
         self._cmd_vel_pub.publish(Twist())
@@ -173,7 +173,7 @@ class LinearOrchestrator(Node):
         mode_msg.data = 2
         self._target_mode_pub.publish(mode_msg)
 
-#        self._recovery_level = RecoveryLevel.WAIT
+        self._retry_count = 0
         response.success = True
         response.message = "Navigation stopped. Robot entering JointDamping -> Idle."
         return response
@@ -184,15 +184,15 @@ class LinearOrchestrator(Node):
         self._cancel_all_goals()
         self._publish_zero_velocity()
 
-#        self._recovery_level = RecoveryLevel.WAIT
+        self._retry_count = 0
         response.success = True
         response.message = "Navigation paused. Manual control available via /M20/cmd_vel."
         return response
 
     # ── AMCL pose cache ──────────────────────────────────────────────────────
 
-#    def _amcl_cb(self, msg: PoseWithCovarianceStamped) -> None:
-#        self._amcl_pose = msg
+    def _amcl_cb(self, msg: PoseWithCovarianceStamped) -> None:
+        self._amcl_pose = msg
 
     # ── Path received from route_server ──────────────────────────────────────
 
@@ -201,9 +201,13 @@ class LinearOrchestrator(Node):
             self.get_logger().warn("Received empty path from route_server, ignoring.")
             return
 
-#        # Reset recovery state for new user goal
-#        self._recovery_level = RecoveryLevel.WAIT
-#        self._original_goal = msg.poses[-1]
+        # Replan-triggered publish continues the retry cycle;
+        # only a genuine new user goal resets the counter
+        if self._expect_replan_path:
+            self._expect_replan_path = False
+        else:
+            self._retry_count = 0
+        self._original_goal = msg.poses[-1]
         self._navigating = True
 
         start = msg.poses[0]
@@ -230,10 +234,37 @@ class LinearOrchestrator(Node):
             self._step1_compute_path(start, goal)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # RECOVERY STATE MACHINE
+    # RETRY LOGIC: path blocked -> WAIT -> replan -> re-run (max N) -> ABORT
     # ══════════════════════════════════════════════════════════════════════════
 
-#    def _handle_failure(self, stage: str) -> None:
+    def _handle_failure(self, stage: str) -> None:
+        """Failure handler: wait then replan, up to max_retries, then abort."""
+        if not self._navigating:
+            return
+
+        if self._retry_count >= self._max_retries:
+            self.get_logger().error(
+                f"{stage} failed — {self._max_retries} replan attempts exhausted. "
+                "Navigation aborted — operator must take over."
+            )
+            self._retry_count = 0
+            self._navigating = False
+            self._publish_zero_velocity()
+            return
+
+        self._retry_count += 1
+        self.get_logger().warn(
+            f"{stage} failed — replan attempt "
+            f"{self._retry_count}/{self._max_retries}: "
+            f"waiting {self._replan_delay}s then replanning..."
+        )
+        if self._replan_timer is not None:
+            self._replan_timer.cancel()
+        self._replan_timer = self.create_timer(
+            self._replan_delay, self._replan_once
+        )
+
+#    def _handle_failure_OLD(self, stage: str) -> None:
 #        """Unified failure handler — escalates through recovery levels."""
 #        if not self._navigating:
 #            return
@@ -384,7 +415,7 @@ class LinearOrchestrator(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error("ComputePathToPose goal rejected.")
-#            self._handle_failure("Planner (goal rejected)")
+            self._handle_failure("Planner (goal rejected)")
             return
 
         result_future = goal_handle.get_result_async()
@@ -396,7 +427,7 @@ class LinearOrchestrator(Node):
             self.get_logger().error(
                 f"ComputePathToPose failed (status={result.status})."
             )
-#            self._handle_failure("Planner")
+            self._handle_failure("Planner")
             return
 
         path = result.result.path
@@ -431,7 +462,7 @@ class LinearOrchestrator(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error("SmoothPath goal rejected.")
-#            self._handle_failure("Smoother (goal rejected)")
+            self._handle_failure("Smoother (goal rejected)")
             return
 
         result_future = goal_handle.get_result_async()
@@ -443,7 +474,7 @@ class LinearOrchestrator(Node):
             self.get_logger().error(
                 f"SmoothPath failed (status={result.status})."
             )
-#            self._handle_failure("Smoother")
+            self._handle_failure("Smoother")
             return
 
         smoothed_path = result.result.path
@@ -482,7 +513,7 @@ class LinearOrchestrator(Node):
         if not goal_handle.accepted:
             self.get_logger().warn("FollowPath goal rejected by controller_server.")
             self._follow_goal_handle = None
-#            self._handle_failure("Controller (goal rejected)")
+            self._handle_failure("Controller (goal rejected)")
             return
 
         self.get_logger().info("FollowPath goal accepted.")
@@ -506,7 +537,7 @@ class LinearOrchestrator(Node):
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info("Goal reached successfully.")
-#            self._recovery_level = RecoveryLevel.WAIT
+            self._retry_count = 0
             self._navigating = False
             return
 
@@ -518,77 +549,77 @@ class LinearOrchestrator(Node):
             self.get_logger().warn(
                 "Goal aborted — path may be blocked by obstacle."
             )
-#            self._handle_failure("Controller")
+            self._handle_failure("Controller")
             return
 
         self.get_logger().warn(f"Goal finished with unexpected status: {status}")
 
     # ── Replan logic ─────────────────────────────────────────────────────────
 
-#    def _replan_once(self) -> None:
-#        """One-shot: request alternate route from route_server, then re-run pipeline."""
-#        if self._replan_timer is not None:
-#            self._replan_timer.cancel()
-#            self._replan_timer = None
-#
-#        if not self._navigating:
-#            return
-#
-#        if self._original_goal is None:
-#            self.get_logger().error("No original goal cached, cannot replan.")
-#            return
-#
-#        if self._amcl_pose is None:
-#            self.get_logger().error(
-#                "No AMCL pose received yet, cannot determine start for replan."
-#            )
-#            return
-#
-#        if not self._get_plan_cli.wait_for_service(timeout_sec=2.0):
-#            self.get_logger().error(
-#                "route_server/get_plan service not available, cannot replan."
-#            )
-#            return
-#
-#        # Build GetPlan request: current pose -> original goal
-#        req = GetPlan.Request()
-#        req.start = PoseStamped()
-#        req.start.header = self._amcl_pose.header
-#        req.start.pose = self._amcl_pose.pose.pose
-#        req.goal = self._original_goal
-#
-#        self.get_logger().info(
-#            f"Replanning: ({req.start.pose.position.x:.2f}, "
-#            f"{req.start.pose.position.y:.2f}) -> "
-#            f"({req.goal.pose.position.x:.2f}, {req.goal.pose.position.y:.2f})"
-#        )
-#
-#        future = self._get_plan_cli.call_async(req)
-#        future.add_done_callback(self._on_replan_result)
-#
-#    def _on_replan_result(self, future) -> None:
-#        try:
-#            response = future.result()
-#        except Exception as e:
-#            self.get_logger().error(f"Replan service call failed: {e}")
-#            self._handle_failure("Replan service")
-#            return
-#
-#        path = response.plan
-#        if len(path.poses) == 0:
-#            self.get_logger().warn("Route server returned empty path on replan.")
-#            self._handle_failure("Replan (empty path)")
-#            return
-#
-#        self.get_logger().info(
-#            f"Replan succeeded — new route with {len(path.poses)} poses. "
-#            f"Re-running pipeline."
-#        )
-#
-#        # Feed the new route through the full pipeline
-#        start = path.poses[0]
-#        goal = path.poses[-1]
-#        self._step1_compute_path(start, goal)
+    def _replan_once(self) -> None:
+        """One-shot: request alternate route from route_server, then re-run pipeline."""
+        if self._replan_timer is not None:
+            self._replan_timer.cancel()
+            self._replan_timer = None
+
+        if not self._navigating:
+            return
+
+        if self._original_goal is None:
+            self.get_logger().error("No original goal cached, cannot replan.")
+            return
+
+        if self._amcl_pose is None:
+            self.get_logger().error(
+                "No AMCL pose received yet, cannot determine start for replan."
+            )
+            self._handle_failure("Replan (no AMCL pose)")
+            return
+
+        if not self._get_plan_cli.wait_for_service(timeout_sec=2.0):
+            self.get_logger().error(
+                "route_server/get_plan service not available, cannot replan."
+            )
+            self._handle_failure("Replan (service unavailable)")
+            return
+
+        # Build GetPlan request: current pose -> original goal
+        req = GetPlan.Request()
+        req.start = PoseStamped()
+        req.start.header = self._amcl_pose.header
+        req.start.pose = self._amcl_pose.pose.pose
+        req.goal = self._original_goal
+
+        self.get_logger().info(
+            f"Replanning: ({req.start.pose.position.x:.2f}, "
+            f"{req.start.pose.position.y:.2f}) -> "
+            f"({req.goal.pose.position.x:.2f}, {req.goal.pose.position.y:.2f})"
+        )
+
+        self._expect_replan_path = True
+        future = self._get_plan_cli.call_async(req)
+        future.add_done_callback(self._on_replan_result)
+
+    def _on_replan_result(self, future) -> None:
+        try:
+            response = future.result()
+        except Exception as e:
+            self.get_logger().error(f"Replan service call failed: {e}")
+            self._expect_replan_path = False
+            self._handle_failure("Replan service")
+            return
+
+        path = response.plan
+        if len(path.poses) == 0:
+            self.get_logger().warn("Route server returned empty path on replan.")
+            self._expect_replan_path = False
+            self._handle_failure("Replan (empty path)")
+            return
+
+        self.get_logger().info(
+            f"Replan succeeded — new route with {len(path.poses)} poses. "
+            "Pipeline restarts via /route_server/path callback."
+        )
 
 
 def main() -> None:

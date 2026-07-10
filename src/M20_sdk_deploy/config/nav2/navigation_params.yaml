@@ -183,11 +183,11 @@ controller_server:
       min_speed_theta: 0.0
 
       # ── Acceleration limits ──
-      acc_lim_x: 1.5
-      acc_lim_y: 0.75
+      acc_lim_x: 0.5
+      acc_lim_y: 0.5
       acc_lim_theta: 2.0
-      decel_lim_x: -1.5
-      decel_lim_y: -0.75
+      decel_lim_x: -0.5
+      decel_lim_y: -0.5
       decel_lim_theta: -3.0
 
       # ── Trajectory simulation ──
@@ -220,12 +220,12 @@ controller_server:
       PathDist:
         scale: 48.0
       PathAlign:
-        scale: 32.0
+        scale: 20.0
         forward_point_distance: 0.1
       GoalDist:
         scale: 10.0
       GoalAlign:
-        scale: 24.0
+        scale: 5.0
         forward_point_distance: 0.1
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -245,7 +245,7 @@ local_costmap:
       update_frequency: 10.0
       publish_frequency: 4.0
       transform_tolerance: 0.5
-      footprint: "[[-0.41, -0.215], [-0.41, 0.215], [0.41, 0.215], [0.41, -0.215]]"
+      footprint: "[[-0.41, -0.2], [-0.41, 0.2], [0.41, 0.2], [0.41, -0.2]]"
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
@@ -281,7 +281,7 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       transform_tolerance: 0.5
-      footprint: "[[-0.41, -0.215], [-0.41, 0.215], [0.41, 0.215], [0.41, -0.215]]"
+      footprint: "[[-0.41, -0.2], [-0.41, 0.2], [0.41, 0.2], [0.41, -0.2]]"
       plugins: ["static_layer", "inflation_layer"]
 
       static_layer:
@@ -290,8 +290,8 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.45
-        cost_scaling_factor: 2.5
+        inflation_radius: 0.7
+        cost_scaling_factor: 2.0
 
       always_send_full_costmap: true
 

@@ -50,12 +50,12 @@ from std_msgs.msg import Int32
 from std_srvs.srv import Trigger
 
 
-class RecoveryLevel(IntEnum):
-    """Graduated recovery: each failure escalates to the next level."""
-    WAIT = 0
-    BACKUP = 1
-    CLEAR_COSTMAPS = 2
-    ABORT = 3
+#class RecoveryLevel(IntEnum):
+#    """Graduated recovery: each failure escalates to the next level."""
+#    WAIT = 0
+#    BACKUP = 1
+#    CLEAR_COSTMAPS = 2
+#    ABORT = 3
 
 
 class LinearOrchestrator(Node):
@@ -63,20 +63,20 @@ class LinearOrchestrator(Node):
         super().__init__("linear_orchestrator")
 
         # Parameters
-        self.declare_parameter("max_retries", 3)
-        self.declare_parameter("replan_delay", 2.0)
+#        self.declare_parameter("max_retries", 3)
+#        self.declare_parameter("replan_delay", 2.0)
         self.declare_parameter("planner_id", "GridBased")
         self.declare_parameter("smoother_id", "SavitzkyGolay")
-        self.declare_parameter("backup_distance", 1.0)
-        self.declare_parameter("backup_speed", 0.1)
-        self.declare_parameter("backup_time_allowance", 15.0)
-        self._max_retries = self.get_parameter("max_retries").value
-        self._replan_delay = self.get_parameter("replan_delay").value
+#        self.declare_parameter("backup_distance", 1.0)
+#        self.declare_parameter("backup_speed", 0.1)
+#        self.declare_parameter("backup_time_allowance", 15.0)
+#        self._max_retries = self.get_parameter("max_retries").value
+#        self._replan_delay = self.get_parameter("replan_delay").value
         self._planner_id = self.get_parameter("planner_id").value
         self._smoother_id = self.get_parameter("smoother_id").value
-        self._backup_distance = self.get_parameter("backup_distance").value
-        self._backup_speed = self.get_parameter("backup_speed").value
-        self._backup_time_allowance = self.get_parameter("backup_time_allowance").value
+#        self._backup_distance = self.get_parameter("backup_distance").value
+#        self._backup_speed = self.get_parameter("backup_speed").value
+#        self._backup_time_allowance = self.get_parameter("backup_time_allowance").value
 
         # Action clients for the Nav2 pipeline
         self._compute_path_client = ActionClient(
@@ -88,24 +88,24 @@ class LinearOrchestrator(Node):
         self._follow_path_client = ActionClient(
             self, FollowPath, "follow_path"
         )
-        self._backup_client = ActionClient(
-            self, BackUp, "backup"
-        )
+#        self._backup_client = ActionClient(
+#            self, BackUp, "backup"
+#        )
 
-        # Service clients for costmap clearing
-        self._clear_global_costmap_cli = self.create_client(
-            ClearEntireCostmap,
-            "/global_costmap/clear_entirely_global_costmap",
-        )
-        self._clear_local_costmap_cli = self.create_client(
-            ClearEntireCostmap,
-            "/local_costmap/clear_entirely_local_costmap",
-        )
-
-        # Route server replan service
-        self._get_plan_cli = self.create_client(
-            GetPlan, "/route_server/get_plan"
-        )
+#        # Service clients for costmap clearing
+#        self._clear_global_costmap_cli = self.create_client(
+#            ClearEntireCostmap,
+#            "/global_costmap/clear_entirely_global_costmap",
+#        )
+#        self._clear_local_costmap_cli = self.create_client(
+#            ClearEntireCostmap,
+#            "/local_costmap/clear_entirely_local_costmap",
+#        )
+#
+#        # Route server replan service
+#        self._get_plan_cli = self.create_client(
+#            GetPlan, "/route_server/get_plan"
+#        )
 
         # Publishers for stop/pause
         self._cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
@@ -117,16 +117,16 @@ class LinearOrchestrator(Node):
 
         # State
         self._follow_goal_handle = None
-        self._recovery_level = RecoveryLevel.WAIT
-        self._original_goal: PoseStamped | None = None
-        self._amcl_pose: PoseWithCovarianceStamped | None = None
-        self._replan_timer = None
+#        self._recovery_level = RecoveryLevel.WAIT
+#        self._original_goal: PoseStamped | None = None
+#        self._amcl_pose: PoseWithCovarianceStamped | None = None
+#        self._replan_timer = None
         self._navigating = False
 
-        # Subscribe to AMCL pose for replan start position
-        self.create_subscription(
-            PoseWithCovarianceStamped, "/amcl_pose", self._amcl_cb, 10
-        )
+#        # Subscribe to AMCL pose for replan start position
+#        self.create_subscription(
+#            PoseWithCovarianceStamped, "/amcl_pose", self._amcl_cb, 10
+#        )
 
         # Subscribe to route_server path (transient-local for late joiners)
         latched_qos = QoSProfile(
@@ -146,9 +146,9 @@ class LinearOrchestrator(Node):
 
     def _cancel_all_goals(self) -> None:
         """Cancel any active FollowPath goal and clear replan timer."""
-        if self._replan_timer is not None:
-            self._replan_timer.cancel()
-            self._replan_timer = None
+#        if self._replan_timer is not None:
+#            self._replan_timer.cancel()
+#            self._replan_timer = None
 
         if (
             self._follow_goal_handle is not None
@@ -173,7 +173,7 @@ class LinearOrchestrator(Node):
         mode_msg.data = 2
         self._target_mode_pub.publish(mode_msg)
 
-        self._recovery_level = RecoveryLevel.WAIT
+#        self._recovery_level = RecoveryLevel.WAIT
         response.success = True
         response.message = "Navigation stopped. Robot entering JointDamping -> Idle."
         return response
@@ -184,15 +184,15 @@ class LinearOrchestrator(Node):
         self._cancel_all_goals()
         self._publish_zero_velocity()
 
-        self._recovery_level = RecoveryLevel.WAIT
+#        self._recovery_level = RecoveryLevel.WAIT
         response.success = True
         response.message = "Navigation paused. Manual control available via /M20/cmd_vel."
         return response
 
     # ── AMCL pose cache ──────────────────────────────────────────────────────
 
-    def _amcl_cb(self, msg: PoseWithCovarianceStamped) -> None:
-        self._amcl_pose = msg
+#    def _amcl_cb(self, msg: PoseWithCovarianceStamped) -> None:
+#        self._amcl_pose = msg
 
     # ── Path received from route_server ──────────────────────────────────────
 
@@ -201,9 +201,9 @@ class LinearOrchestrator(Node):
             self.get_logger().warn("Received empty path from route_server, ignoring.")
             return
 
-        # Reset recovery state for new user goal
-        self._recovery_level = RecoveryLevel.WAIT
-        self._original_goal = msg.poses[-1]
+#        # Reset recovery state for new user goal
+#        self._recovery_level = RecoveryLevel.WAIT
+#        self._original_goal = msg.poses[-1]
         self._navigating = True
 
         start = msg.poses[0]
@@ -233,126 +233,126 @@ class LinearOrchestrator(Node):
     # RECOVERY STATE MACHINE
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _handle_failure(self, stage: str) -> None:
-        """Unified failure handler — escalates through recovery levels."""
-        if not self._navigating:
-            return
-
-        level = self._recovery_level
-        self.get_logger().warn(
-            f"{stage} failed — recovery level: {level.name}"
-        )
-
-        if level == RecoveryLevel.WAIT:
-            self._recovery_level = RecoveryLevel.BACKUP
-            self.get_logger().info(
-                f"[Recovery: WAIT] Waiting {self._replan_delay}s then replanning..."
-            )
-            if self._replan_timer is not None:
-                self._replan_timer.cancel()
-            self._replan_timer = self.create_timer(
-                self._replan_delay, self._replan_once
-            )
-
-        elif level == RecoveryLevel.BACKUP:
-            self._recovery_level = RecoveryLevel.CLEAR_COSTMAPS
-            self.get_logger().info(
-                f"[Recovery: BACKUP] Backing up {self._backup_distance}m..."
-            )
-            self._execute_backup()
-
-        elif level == RecoveryLevel.CLEAR_COSTMAPS:
-            self._recovery_level = RecoveryLevel.ABORT
-            self.get_logger().info(
-                "[Recovery: CLEAR_COSTMAPS] Clearing global and local costmaps..."
-            )
-            self._clear_costmaps_and_replan()
-
-        elif level == RecoveryLevel.ABORT:
-            self.get_logger().error(
-                "[Recovery: ABORT] All recovery attempts exhausted. "
-                "Navigation aborted — operator must take over."
-            )
-            self._recovery_level = RecoveryLevel.WAIT
-            self._navigating = False
-
-    # ── BackUp behavior ──────────────────────────────────────────────────────
-
-    def _execute_backup(self) -> None:
-        if not self._backup_client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error(
-                "BackUp action server not available — is behavior_server running?"
-            )
-            # Skip backup, go straight to replan
-            self._replan_once()
-            return
-
-        goal_msg = BackUp.Goal()
-        goal_msg.target.x = -self._backup_distance  # negative = backward
-        goal_msg.speed = self._backup_speed
-        goal_msg.time_allowance.sec = int(self._backup_time_allowance)
-
-        future = self._backup_client.send_goal_async(goal_msg)
-        future.add_done_callback(self._on_backup_response)
-
-    def _on_backup_response(self, future) -> None:
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().warn("BackUp goal rejected, proceeding to replan.")
-            self._replan_once()
-            return
-
-        self.get_logger().info("BackUp goal accepted, waiting for completion...")
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._on_backup_result)
-
-    def _on_backup_result(self, future) -> None:
-        result = future.result()
-        if result.status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info("BackUp completed successfully.")
-        else:
-            self.get_logger().warn(
-                f"BackUp finished with status {result.status}, proceeding to replan."
-            )
-        self._replan_once()
-
-    # ── Clear costmaps ───────────────────────────────────────────────────────
-
-    def _clear_costmaps_and_replan(self) -> None:
-        cleared = 0
-
-        def _on_clear_done(future, name):
-            nonlocal cleared
-            try:
-                future.result()
-                self.get_logger().info(f"Cleared {name} costmap.")
-            except Exception as e:
-                self.get_logger().warn(f"Failed to clear {name} costmap: {e}")
-            cleared += 1
-            if cleared == 2:
-                self._replan_once()
-
-        if self._clear_global_costmap_cli.wait_for_service(timeout_sec=2.0):
-            f = self._clear_global_costmap_cli.call_async(
-                ClearEntireCostmap.Request()
-            )
-            f.add_done_callback(lambda fut: _on_clear_done(fut, "global"))
-        else:
-            self.get_logger().warn("Global costmap clear service not available.")
-            cleared += 1
-
-        if self._clear_local_costmap_cli.wait_for_service(timeout_sec=2.0):
-            f = self._clear_local_costmap_cli.call_async(
-                ClearEntireCostmap.Request()
-            )
-            f.add_done_callback(lambda fut: _on_clear_done(fut, "local"))
-        else:
-            self.get_logger().warn("Local costmap clear service not available.")
-            cleared += 1
-
-        # If both services were unavailable, replan immediately
-        if cleared == 2:
-            self._replan_once()
+#    def _handle_failure(self, stage: str) -> None:
+#        """Unified failure handler — escalates through recovery levels."""
+#        if not self._navigating:
+#            return
+#
+#        level = self._recovery_level
+#        self.get_logger().warn(
+#            f"{stage} failed — recovery level: {level.name}"
+#        )
+#
+#        if level == RecoveryLevel.WAIT:
+#            self._recovery_level = RecoveryLevel.BACKUP
+#            self.get_logger().info(
+#                f"[Recovery: WAIT] Waiting {self._replan_delay}s then replanning..."
+#            )
+#            if self._replan_timer is not None:
+#                self._replan_timer.cancel()
+#            self._replan_timer = self.create_timer(
+#                self._replan_delay, self._replan_once
+#            )
+#
+#        elif level == RecoveryLevel.BACKUP:
+#            self._recovery_level = RecoveryLevel.CLEAR_COSTMAPS
+#            self.get_logger().info(
+#                f"[Recovery: BACKUP] Backing up {self._backup_distance}m..."
+#            )
+#            self._execute_backup()
+#
+#        elif level == RecoveryLevel.CLEAR_COSTMAPS:
+#            self._recovery_level = RecoveryLevel.ABORT
+#            self.get_logger().info(
+#                "[Recovery: CLEAR_COSTMAPS] Clearing global and local costmaps..."
+#            )
+#            self._clear_costmaps_and_replan()
+#
+#        elif level == RecoveryLevel.ABORT:
+#            self.get_logger().error(
+#                "[Recovery: ABORT] All recovery attempts exhausted. "
+#                "Navigation aborted — operator must take over."
+#            )
+#            self._recovery_level = RecoveryLevel.WAIT
+#            self._navigating = False
+#
+#    # ── BackUp behavior ──────────────────────────────────────────────────────
+#
+#    def _execute_backup(self) -> None:
+#        if not self._backup_client.wait_for_server(timeout_sec=5.0):
+#            self.get_logger().error(
+#                "BackUp action server not available — is behavior_server running?"
+#            )
+#            # Skip backup, go straight to replan
+#            self._replan_once()
+#            return
+#
+#        goal_msg = BackUp.Goal()
+#        goal_msg.target.x = -self._backup_distance  # negative = backward
+#        goal_msg.speed = self._backup_speed
+#        goal_msg.time_allowance.sec = int(self._backup_time_allowance)
+#
+#        future = self._backup_client.send_goal_async(goal_msg)
+#        future.add_done_callback(self._on_backup_response)
+#
+#    def _on_backup_response(self, future) -> None:
+#        goal_handle = future.result()
+#        if not goal_handle.accepted:
+#            self.get_logger().warn("BackUp goal rejected, proceeding to replan.")
+#            self._replan_once()
+#            return
+#
+#        self.get_logger().info("BackUp goal accepted, waiting for completion...")
+#        result_future = goal_handle.get_result_async()
+#        result_future.add_done_callback(self._on_backup_result)
+#
+#    def _on_backup_result(self, future) -> None:
+#        result = future.result()
+#        if result.status == GoalStatus.STATUS_SUCCEEDED:
+#            self.get_logger().info("BackUp completed successfully.")
+#        else:
+#            self.get_logger().warn(
+#                f"BackUp finished with status {result.status}, proceeding to replan."
+#            )
+#        self._replan_once()
+#
+#    # ── Clear costmaps ───────────────────────────────────────────────────────
+#
+#    def _clear_costmaps_and_replan(self) -> None:
+#        cleared = 0
+#
+#        def _on_clear_done(future, name):
+#            nonlocal cleared
+#            try:
+#                future.result()
+#                self.get_logger().info(f"Cleared {name} costmap.")
+#            except Exception as e:
+#                self.get_logger().warn(f"Failed to clear {name} costmap: {e}")
+#            cleared += 1
+#            if cleared == 2:
+#                self._replan_once()
+#
+#        if self._clear_global_costmap_cli.wait_for_service(timeout_sec=2.0):
+#            f = self._clear_global_costmap_cli.call_async(
+#                ClearEntireCostmap.Request()
+#            )
+#            f.add_done_callback(lambda fut: _on_clear_done(fut, "global"))
+#        else:
+#            self.get_logger().warn("Global costmap clear service not available.")
+#            cleared += 1
+#
+#        if self._clear_local_costmap_cli.wait_for_service(timeout_sec=2.0):
+#            f = self._clear_local_costmap_cli.call_async(
+#                ClearEntireCostmap.Request()
+#            )
+#            f.add_done_callback(lambda fut: _on_clear_done(fut, "local"))
+#        else:
+#            self.get_logger().warn("Local costmap clear service not available.")
+#            cleared += 1
+#
+#        # If both services were unavailable, replan immediately
+#        if cleared == 2:
+#            self._replan_once()
 
     # ══════════════════════════════════════════════════════════════════════════
     # PIPELINE STEP 1: ComputePathToPose (planner_server)
@@ -384,7 +384,7 @@ class LinearOrchestrator(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error("ComputePathToPose goal rejected.")
-            self._handle_failure("Planner (goal rejected)")
+#            self._handle_failure("Planner (goal rejected)")
             return
 
         result_future = goal_handle.get_result_async()
@@ -396,7 +396,7 @@ class LinearOrchestrator(Node):
             self.get_logger().error(
                 f"ComputePathToPose failed (status={result.status})."
             )
-            self._handle_failure("Planner")
+#            self._handle_failure("Planner")
             return
 
         path = result.result.path
@@ -431,7 +431,7 @@ class LinearOrchestrator(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().error("SmoothPath goal rejected.")
-            self._handle_failure("Smoother (goal rejected)")
+#            self._handle_failure("Smoother (goal rejected)")
             return
 
         result_future = goal_handle.get_result_async()
@@ -443,7 +443,7 @@ class LinearOrchestrator(Node):
             self.get_logger().error(
                 f"SmoothPath failed (status={result.status})."
             )
-            self._handle_failure("Smoother")
+#            self._handle_failure("Smoother")
             return
 
         smoothed_path = result.result.path
@@ -482,7 +482,7 @@ class LinearOrchestrator(Node):
         if not goal_handle.accepted:
             self.get_logger().warn("FollowPath goal rejected by controller_server.")
             self._follow_goal_handle = None
-            self._handle_failure("Controller (goal rejected)")
+#            self._handle_failure("Controller (goal rejected)")
             return
 
         self.get_logger().info("FollowPath goal accepted.")
@@ -506,7 +506,7 @@ class LinearOrchestrator(Node):
 
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info("Goal reached successfully.")
-            self._recovery_level = RecoveryLevel.WAIT
+#            self._recovery_level = RecoveryLevel.WAIT
             self._navigating = False
             return
 
@@ -518,77 +518,77 @@ class LinearOrchestrator(Node):
             self.get_logger().warn(
                 "Goal aborted — path may be blocked by obstacle."
             )
-            self._handle_failure("Controller")
+#            self._handle_failure("Controller")
             return
 
         self.get_logger().warn(f"Goal finished with unexpected status: {status}")
 
     # ── Replan logic ─────────────────────────────────────────────────────────
 
-    def _replan_once(self) -> None:
-        """One-shot: request alternate route from route_server, then re-run pipeline."""
-        if self._replan_timer is not None:
-            self._replan_timer.cancel()
-            self._replan_timer = None
-
-        if not self._navigating:
-            return
-
-        if self._original_goal is None:
-            self.get_logger().error("No original goal cached, cannot replan.")
-            return
-
-        if self._amcl_pose is None:
-            self.get_logger().error(
-                "No AMCL pose received yet, cannot determine start for replan."
-            )
-            return
-
-        if not self._get_plan_cli.wait_for_service(timeout_sec=2.0):
-            self.get_logger().error(
-                "route_server/get_plan service not available, cannot replan."
-            )
-            return
-
-        # Build GetPlan request: current pose -> original goal
-        req = GetPlan.Request()
-        req.start = PoseStamped()
-        req.start.header = self._amcl_pose.header
-        req.start.pose = self._amcl_pose.pose.pose
-        req.goal = self._original_goal
-
-        self.get_logger().info(
-            f"Replanning: ({req.start.pose.position.x:.2f}, "
-            f"{req.start.pose.position.y:.2f}) -> "
-            f"({req.goal.pose.position.x:.2f}, {req.goal.pose.position.y:.2f})"
-        )
-
-        future = self._get_plan_cli.call_async(req)
-        future.add_done_callback(self._on_replan_result)
-
-    def _on_replan_result(self, future) -> None:
-        try:
-            response = future.result()
-        except Exception as e:
-            self.get_logger().error(f"Replan service call failed: {e}")
-            self._handle_failure("Replan service")
-            return
-
-        path = response.plan
-        if len(path.poses) == 0:
-            self.get_logger().warn("Route server returned empty path on replan.")
-            self._handle_failure("Replan (empty path)")
-            return
-
-        self.get_logger().info(
-            f"Replan succeeded — new route with {len(path.poses)} poses. "
-            f"Re-running pipeline."
-        )
-
-        # Feed the new route through the full pipeline
-        start = path.poses[0]
-        goal = path.poses[-1]
-        self._step1_compute_path(start, goal)
+#    def _replan_once(self) -> None:
+#        """One-shot: request alternate route from route_server, then re-run pipeline."""
+#        if self._replan_timer is not None:
+#            self._replan_timer.cancel()
+#            self._replan_timer = None
+#
+#        if not self._navigating:
+#            return
+#
+#        if self._original_goal is None:
+#            self.get_logger().error("No original goal cached, cannot replan.")
+#            return
+#
+#        if self._amcl_pose is None:
+#            self.get_logger().error(
+#                "No AMCL pose received yet, cannot determine start for replan."
+#            )
+#            return
+#
+#        if not self._get_plan_cli.wait_for_service(timeout_sec=2.0):
+#            self.get_logger().error(
+#                "route_server/get_plan service not available, cannot replan."
+#            )
+#            return
+#
+#        # Build GetPlan request: current pose -> original goal
+#        req = GetPlan.Request()
+#        req.start = PoseStamped()
+#        req.start.header = self._amcl_pose.header
+#        req.start.pose = self._amcl_pose.pose.pose
+#        req.goal = self._original_goal
+#
+#        self.get_logger().info(
+#            f"Replanning: ({req.start.pose.position.x:.2f}, "
+#            f"{req.start.pose.position.y:.2f}) -> "
+#            f"({req.goal.pose.position.x:.2f}, {req.goal.pose.position.y:.2f})"
+#        )
+#
+#        future = self._get_plan_cli.call_async(req)
+#        future.add_done_callback(self._on_replan_result)
+#
+#    def _on_replan_result(self, future) -> None:
+#        try:
+#            response = future.result()
+#        except Exception as e:
+#            self.get_logger().error(f"Replan service call failed: {e}")
+#            self._handle_failure("Replan service")
+#            return
+#
+#        path = response.plan
+#        if len(path.poses) == 0:
+#            self.get_logger().warn("Route server returned empty path on replan.")
+#            self._handle_failure("Replan (empty path)")
+#            return
+#
+#        self.get_logger().info(
+#            f"Replan succeeded — new route with {len(path.poses)} poses. "
+#            f"Re-running pipeline."
+#        )
+#
+#        # Feed the new route through the full pipeline
+#        start = path.poses[0]
+#        goal = path.poses[-1]
+#        self._step1_compute_path(start, goal)
 
 
 def main() -> None:

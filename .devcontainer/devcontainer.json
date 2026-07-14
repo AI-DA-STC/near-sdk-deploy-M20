@@ -1,0 +1,67 @@
+{
+    "name": "M20 ROS2 Humble Dev",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "runArgs": [
+        "--ipc=host", // Shares the host's IPC namespace (DDS shared-memory transport)
+        "--network=host", // Shares the host's network namespace (DDS discovery, GUI)
+        "--cap-add=SYS_PTRACE", // Allows debuggers (gdb) to attach
+        "--security-opt=seccomp=unconfined"
+        // "--privileged" // Uncomment only when attaching real hardware (serial/USB/lidar) to the dev container
+        ,"--gpus", "all" 
+    ],
+    // This repo is ALREADY a colcon workspace root (it contains src/ build/ install/ log/),
+    // so mount the repo root AS the workspace root rather than nesting it under src/.
+    "workspaceMount": "source=${localWorkspaceFolder},target=/root/ros_ws,type=bind",
+    "workspaceFolder": "/root/ros_ws",
+    "containerEnv": {
+        // X server access for RViz2 / Gazebo GUIs
+        "DISPLAY": "${localEnv:DISPLAY}",
+        "QT_X11_NO_MITSHM": "1",
+        // Keep DDS traffic local; change if you talk to the real robot over the LAN.
+        "ROS_DOMAIN_ID": "0",
+        // Use CycloneDDS: FastDDS (the image default) drops Nav2 lifecycle service
+        // responses in-container, stalling bringup. Applies to every shell so all
+        // nodes share one RMW (mixing RMWs breaks discovery).
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
+    },
+    "mounts": [
+        // X11 socket + auth so GUI tools render on the host display
+        {
+            "source": "/tmp/.X11-unix",
+            "target": "/tmp/.X11-unix",
+            "type": "bind"
+        },
+        {
+            "source": "${localEnv:XAUTHORITY:-$HOME/.Xauthority}",
+            "target": "/root/.Xauthority",
+            "type": "bind"
+        }
+        // Optional: isolate the container's build artifacts from your host's native build.
+        // Uncomment to keep the container's build/ install/ log/ in Docker volumes instead
+        // of sharing (and clobbering) the ones you built on the host:
+        // ,{ "source": "m20-build",   "target": "/root/ros_ws/build",   "type": "volume" }
+        // ,{ "source": "m20-install", "target": "/root/ros_ws/install", "type": "volume" }
+        // ,{ "source": "m20-log",     "target": "/root/ros_ws/log",     "type": "volume" }
+    ],
+    // Refresh apt lists, resolve ROS deps for src/, and set up the SWAGGER venv.
+    // See .devcontainer/post-create.sh for details.
+    "postCreateCommand": "bash .devcontainer/post-create.sh",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash"
+            },
+            "extensions": [
+                "ms-iot.vscode-ros",
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "twxs.cmake",
+                "mhutchie.git-graph"
+            ]
+        }
+    }
+}

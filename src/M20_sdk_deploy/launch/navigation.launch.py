@@ -141,7 +141,9 @@ def generate_launch_description():
             "max_height": 0.5,
             "angle_min": -3.14159,
             "angle_max": 3.14159,
-            "angle_increment": 0.00287,
+            # 2*pi/1024 — must match the gpu_lidar horizontal sample count in
+            # M20_velodyne.sdf, else the scan is padded with interleaved inf bins.
+            "angle_increment": 0.00614,
             "range_min": 0.9,
             "range_max": 70.0,
             "inf_epsilon": 1.0,

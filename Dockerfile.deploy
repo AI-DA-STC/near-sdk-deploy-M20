@@ -1,0 +1,92 @@
+# =============================================================================
+# Deployment image for the M20 robot.
+#
+# This is the SLIM, on-robot counterpart to .devcontainer/Dockerfile.
+# It starts from ros-base (NO Gazebo, NO RViz, NO simulation stack) and builds
+# only what the robot needs to run at runtime.
+#
+# Build (from the repo root, so the build context includes src/):
+#   docker build -f Dockerfile.deploy -t m20-deploy:humble .
+#
+# Run on the robot (host networking for DDS, mount devices as needed):
+#   docker run --rm -it --network=host --ipc=host \
+#       --device=/dev/... m20-deploy:humble
+# =============================================================================
+FROM ros:humble-ros-base
+
+SHELL [ "/bin/bash", "-c" ]
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        python3-pip \
+        python3-colcon-common-extensions \
+        python3-rosdep \
+        ros-humble-navigation2 \
+        ros-humble-rmw-cyclonedds-cpp \
+        ros-humble-diagnostic-updater \
+    && rm -rf /var/lib/apt/lists/*
+
+# Full Nav2 stack (above) so every planner/controller/critic plugin is present
+# regardless of what package.xml declares; CycloneDDS because FastDDS drops Nav2
+# lifecycle service responses in-container. Match this RMW on every process that
+# talks to the robot.
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+WORKDIR /root/ros_ws
+
+# Navigation Python deps into the system interpreter ros2 launch/run uses.
+# requirements-deploy.txt is the minimal robot list — NOT requirements.txt
+# (the dev-machine freeze), which pins local/CUDA/dev packages that would
+# break this build.
+COPY requirements-deploy.txt ./requirements-deploy.txt
+RUN pip install --no-cache-dir -r requirements-deploy.txt
+
+# Copy the workspace sources into the image. Initialise submodules on the host
+# first: `git submodule update --init --recursive`.
+#   - rf2o_laser_odometry (submodule): a normal ROS2 package -> colcon-built below.
+#   - SWAGGER (submodule): a dev-only offline graph generator needing an NVIDIA GPU
+#     (cucim-cu12). The robot only READS the .gml graph it produces, so SWAGGER is
+#     NOT needed here. Drop it so colcon never sees its integration/ packages.
+COPY src/ ./src/
+RUN rm -rf src/src/SWAGGER
+
+# Resolve runtime dependencies.
+#
+# NOTE: package.xml currently has `<depend>ros_gz_bridge</depend>`, which is a
+# SIM-ONLY dependency. On the robot you don't want the Ignition bridge; either
+# make that line conditional in package.xml, e.g.
+#     <depend condition="$SIM == 1">ros_gz_bridge</depend>
+# or skip it here. We skip ros_gz* keys so rosdep doesn't pull Ignition:
+# skip-keys:
+#   ros_gz*      -> sim-only, not needed on the robot (see note above)
+#   glim_ros     -> built from source separately (not on any apt repo)
+#   cmake_modules-> stale rf2o key with no humble rosdep definition
+RUN apt-get update \
+    && rosdep update \
+    && rosdep install --from-paths src --ignore-src -r -y \
+         --skip-keys "ros_gz_bridge ros_gz_sim ros_gz glim_ros cmake_modules" \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build the workspace (release, no test artifacts).
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+# Auto-source ROS + the built overlay.
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \
+    && echo "source /root/ros_ws/install/setup.bash" >> /root/.bashrc
+
+# Default entrypoint sources the overlay before running the given command.
+# (printf, not echo: bash echo does not expand \n, which would corrupt the shebang)
+RUN printf '%s\n' \
+        '#!/bin/bash' \
+        'set -e' \
+        'source /opt/ros/${ROS_DISTRO}/setup.bash' \
+        'source /root/ros_ws/install/setup.bash' \
+        'exec "$@"' \
+        > /ros_entrypoint.sh \
+    && chmod +x /ros_entrypoint.sh
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]

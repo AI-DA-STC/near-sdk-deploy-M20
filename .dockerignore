@@ -1,0 +1,16 @@
+# Keep the docker build context small: only src/, requirements-deploy.txt and
+# maps/ matter to Dockerfile.deploy.
+build/
+install/
+log/
+navigation_logs/
+glim_logs/
+.git/
+.devcontainer/
+.vscode/
+assets/
+a.out
+imgui.ini
+# SWAGGER submodule is dev-only and removed inside the Dockerfile anyway;
+# excluding it here also keeps it out of the context upload.
+src/src/SWAGGER/

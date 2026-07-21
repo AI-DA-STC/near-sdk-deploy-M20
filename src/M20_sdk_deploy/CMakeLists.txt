@@ -110,6 +110,7 @@ install(PROGRAMS
   scripts/m20_cmd_vel_bridge.py
   scripts/linear_orchestrator.py
   scripts/velodyne_timestamp_injector.py
+  scripts/restamp_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

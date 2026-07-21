@@ -1,0 +1,49 @@
+# =============================================================================
+# docker-compose.yml — M20 two-container autonomy stack on the GOS host (.104).
+#
+# ONE image (m20-deploy:humble, see Dockerfile.deploy), TWO containers:
+#   nav_core    robot-agnostic SLAM + Nav2 (generic topics in, /cmd_vel out)
+#   m20_bridge  M20-specific UDP/DDS bridge (swap this for another robot)
+#
+# --network=host + --ipc=host: the two containers share the host's network and
+# IPC, so DDS discovers across them via shared memory / loopback, m20_bridge
+# reaches AOS (10.21.31.103) over the internal switch, and the laptop RViz on
+# the external NIC (10.21.34.x) can send /goal_pose. See fastdds_profile_gos.xml.
+#
+# Usage on the robot:
+#   docker compose up                 # both containers
+#   docker compose up m20_bridge      # bridge only (e.g. for the T1-T3 tests)
+#   ENABLE_TX=true docker compose up   # arm the Cmd-21 actuation path (after T4-T6)
+# =============================================================================
+services:
+  m20_bridge:
+    image: m20-deploy:humble
+    container_name: m20_bridge
+    network_mode: host
+    ipc: host
+    environment:
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml
+    # enable_tx defaults false; set ENABLE_TX=true in the environment to arm
+    # the UDP axis-command (Cmd 21) path once it is validated (tests T4-T6).
+    command: >
+      ros2 launch m20_bridge m20_bridge.launch.py
+      enable_tx:=${ENABLE_TX:-false}
+    restart: unless-stopped
+
+  nav_core:
+    image: m20-deploy:humble
+    container_name: nav_core
+    network_mode: host
+    ipc: host
+    depends_on:
+      - m20_bridge
+    environment:
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml
+    volumes:
+      # maps + SWAGGER graph produced by the GLIM offline pipeline (host ~/maps)
+      - ${HOME}/maps:/root/ros_ws/maps
+    command: >
+      ros2 launch rl_deploy navigation.launch.py sim:=false
+    restart: unless-stopped

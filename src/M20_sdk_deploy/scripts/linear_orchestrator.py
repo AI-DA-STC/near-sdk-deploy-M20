@@ -106,7 +106,9 @@ class LinearOrchestrator(Node):
 
         # Publishers for stop/pause
         self._cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
-        self._target_mode_pub = self.create_publisher(Int32, "/M20/target_mode", 10)
+        # Generic output: 2 = JointDamping on STOP. A robot bridge MAY subscribe
+        # this and map it to a robot-specific motion-state command.
+        self._target_mode_pub = self.create_publisher(Int32, "/target_mode", 10)
 
         # Services: stop and pause
         self.create_service(Trigger, "~/stop", self._stop_cb)
@@ -186,7 +188,7 @@ class LinearOrchestrator(Node):
 
         self._retry_count = 0
         response.success = True
-        response.message = "Navigation paused. Manual control available via /M20/cmd_vel."
+        response.message = "Navigation paused. Manual control available via /cmd_vel."
         return response
 
     # ── AMCL pose cache ──────────────────────────────────────────────────────

@@ -1,0 +1,33 @@
+# =============================================================================
+# bridge_params.yaml — M20 UDP bridge node parameters
+#
+# The axis_scale_* and axis_deadband values are PLACEHOLDERS. Replace them with
+# the result of the T5 calibration sweep (command a normalized step, measure the
+# achieved speed from /odom + UDP 1002/4 LinearX/Y/OmegaZ). axis_scale_* is the
+# robot speed [m/s | rad/s] that corresponds to a normalized command of 1.0.
+# =============================================================================
+
+m20_udp_node:
+  ros__parameters:
+    # UDP transport (Inspection Protocol, manual §1.1)
+    robot_ip: "10.21.31.103"       # AOS motion host over the internal switch
+    robot_port: 30000
+    local_port: 30100              # fixed local bind => duplicate instance fails
+
+    heartbeat_rate: 1.0            # Hz (manual: >= 1 Hz keeps status streaming)
+    cmd_rate: 20.0                 # Hz (manual recommends 20 Hz for axis control)
+    watchdog_timeout: 0.5          # s stale /cmd_vel -> stream zero velocity
+
+    # Actuation gate — leave FALSE until Cmd 21 is bench-validated (T4-T6).
+    enable_tx: false
+    set_regular_mode_on_start: true  # axis commands require Regular mode (1101/5=0)
+
+    # Normalized-axis calibration (PLACEHOLDER — set from T5 sweep)
+    axis_scale_x: 1.0              # m/s at |X|=1.0   (forward/back)
+    axis_scale_y: 0.5             # m/s at |Y|=1.0   (left/right)
+    axis_scale_yaw: 1.5           # rad/s at |Yaw|=1.0
+    axis_deadband: 0.0            # normalized floor for small commands
+    max_norm: 0.6                 # hard cap on |normalized| output (safety)
+
+    joint_states_topic: "/joint_states"
+    cmd_vel_topic: "/cmd_vel"

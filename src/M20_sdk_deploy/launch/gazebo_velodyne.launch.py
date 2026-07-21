@@ -118,8 +118,8 @@ def generate_launch_description():
     # Spawn robot after 8 seconds to let world fully load
     delayed_spawn = TimerAction(period=8.0, actions=[spawn_robot])
 
-    # 5) Bridge joint states from Gazebo to ROS2
-    # Note: Topics are namespaced with /M20/ to be consistent with multi-robot setup
+    # 5) Bridge joint states from Gazebo to ROS2 (GENERIC name — sim acts as the
+    #    robot bridge, feeding nav_core's generic contract: /joint_states)
     bridge_joint_states = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -128,7 +128,7 @@ def generate_launch_description():
             '/world/Edifice/model/M20/joint_state@sensor_msgs/msg/JointState[ignition.msgs.Model'
         ],
         remappings=[
-            ('/world/Edifice/model/M20/joint_state', '/M20/joint_states')
+            ('/world/Edifice/model/M20/joint_state', '/joint_states')
         ],
         output='screen'
     )
@@ -142,7 +142,7 @@ def generate_launch_description():
             '/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu@sensor_msgs/msg/Imu[ignition.msgs.IMU'
         ],
         remappings=[
-            ('/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu', '/M20/IMU')
+            ('/world/Edifice/model/M20/link/base_link/sensor/imu_sensor/imu', '/imu')
         ],
         output='screen'
     )
@@ -156,7 +156,7 @@ def generate_launch_description():
             '/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked'
         ],
         remappings=[
-            ('/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points', '/M20/LIDAR/VELODYNE')
+            ('/world/Edifice/model/M20/link/base_link/sensor/velodyne_hdl32e/scan/points', '/lidar/points')
         ],
         output='screen'
     )
@@ -198,7 +198,7 @@ def generate_launch_description():
             'robot_description': get_robot_description(),
             'use_sim_time': True,
         }],
-        remappings=[('/joint_states', '/M20/joint_states')],
+        # subscribes the generic /joint_states published by bridge_joint_states
     )
 
     # 12) Bridge joint force commands for each joint
@@ -235,6 +235,16 @@ def generate_launch_description():
             'robot_name': 'M20',
             'world_name': 'Edifice',
         }],
+        # The controller builds its Gazebo-side subscriptions from robot_name as
+        # /M20/joint_states, /M20/IMU, /M20/LIDAR/VELODYNE. The Gazebo bridges above
+        # now publish the GENERIC contract names (/joint_states, /imu, /lidar/points)
+        # for nav_core, so remap the controller's feedback inputs onto them —
+        # otherwise it never sees joint/IMU state and drives the legs open-loop.
+        remappings=[
+            ('/M20/joint_states', '/joint_states'),
+            ('/M20/IMU', '/imu'),
+            ('/M20/LIDAR/VELODYNE', '/lidar/points'),
+        ],
     )
 
     # Start bridges and controller after robot spawns

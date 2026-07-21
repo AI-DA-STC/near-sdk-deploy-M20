@@ -1,30 +1,37 @@
 """
-navigation.launch.py — Consolidated Nav2 navigation stack for M20 quadruped.
+navigation.launch.py — ROBOT-AGNOSTIC Nav2 + routing stack (nav_core).
 
-Launches the full navigation pipeline:
+This is the "black box": it consumes GENERIC topics and produces /cmd_vel. It
+contains NO robot-specific transport, clock, frame, or URDF knowledge. A
+per-robot *bridge* (e.g. m20_bridge.launch.py, or in simulation the gazebo
+bringup) is responsible for supplying the generic inputs and consuming the
+output. Porting to a new robot = write a new bridge launch file; this file is
+untouched.
 
-  Localization:
-    1. pointcloud_to_laserscan  — 3D PointCloud2 -> 2D LaserScan
-    2. rf2o_laser_odometry      — LaserScan -> Odometry for EKF
-    3. ekf_node                 — Fuses LiDAR odom + IMU -> odom->base_link TF
-    4. map_server               — Serves 2D occupancy grid
-    5. amcl                     — Publishes map->odom TF
-    6. static TFs               — Gazebo sensor frame aliases
+Generic contract:
+  IN   /lidar/points   sensor_msgs/PointCloud2   (front lidar)
+  IN   /imu            sensor_msgs/Imu           (raw; EKF yaw-rate, GLIM)
+  IN   /odom           nav_msgs/Odometry         (robot's fused odometry)
+  IN   /joint_states   + /robot_description + TF base_link->lidar_link
+                                                 (published by the bridge)
+  IN   /goal_pose, /initialpose                  (RViz on the workstation)
+  OUT  /cmd_vel        geometry_msgs/Twist       (raw DWB output; the bridge
+                                                  clamps + converts to the robot)
 
-  Navigation:
-    7.  route_server            — SWAGGER graph -> sparse waypoint route
-    8.  planner_server          — SmacPlanner2D on global costmap -> dense path
-    9.  smoother_server         — Savitzky-Golay path smoothing
-    10. controller_server       — DWB local planner -> cmd_vel
-    11. linear_orchestrator     — Orchestrates planner->smoother->controller
-    12. m20_cmd_vel_bridge      — /cmd_vel -> /M20/cmd_vel with clamping
+Internal pipeline:
+  /lidar/points -> pointcloud_to_laserscan -> /scan -> amcl + costmaps
+  /odom (+/imu) -> ekf -> odom->base_link TF, /odometry/filtered
+  /goal_pose    -> route_server (graph) -> linear_orchestrator -> nav2 -> /cmd_vel
 
-  Lifecycle:
-    13. lifecycle_manager_navigation — Manages map_server, amcl, planner_server,
-                                       smoother_server, controller_server
-
-Prerequisite launches:
-  - gazebo_velodyne.launch.py  (Gazebo simulation + sensor bridges)
+Modes (sim launch argument): both modes consume the SAME generic topics; `sim`
+only toggles the helper nodes that exist because Gazebo has a clean clock and a
+scan-matching odometry source instead of a hardware bridge.
+  sim:=true  (default) — pair with the Gazebo bringup (gazebo_velodyne.launch.py),
+                         which publishes /lidar/points, /imu, /joint_states.
+                         Adds rf2o (-> /odom) and the Gazebo sensor-frame TFs.
+  sim:=false            — pair with a robot bridge (m20_bridge.launch.py) that
+                         publishes /lidar/points, /imu, /odom, /joint_states and
+                         the base_link->lidar_link TF.
 """
 
 import os
@@ -33,13 +40,13 @@ from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.conditions import IfCondition, UnlessCondition
 from launch.logging import launch_config
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from pyprojroot import here
 
 PROJECT_ROOT = here()
-PACKAGE_PATH = PROJECT_ROOT / "src" / "M20_sdk_deploy"
 
 # ── Run logs: navigation_logs/<timestamp>/ at the project root ──────────
 # Per-node rcutils .log files land here directly (via ROS_LOG_DIR below).
@@ -73,10 +80,17 @@ def generate_launch_description():
 
     map_yaml = LaunchConfiguration("map")
     graph_file = LaunchConfiguration("graph_file")
+    sim = LaunchConfiguration("sim")
     use_sim_time = LaunchConfiguration("use_sim_time")
     params_file = LaunchConfiguration("params_file")
 
     declare_args = [
+        DeclareLaunchArgument(
+            "sim",
+            default_value="true",
+            description="true = pair with Gazebo bringup; "
+                        "false = pair with a robot bridge (m20_bridge.launch.py)",
+        ),
         DeclareLaunchArgument(
             "map",
             default_value=default_map,
@@ -89,7 +103,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "use_sim_time",
-            default_value="true",
+            # Follows `sim` unless explicitly overridden.
+            default_value=sim,
             description="Use simulation (Gazebo) clock",
         ),
         DeclareLaunchArgument(
@@ -103,22 +118,25 @@ def generate_launch_description():
     log_env = [
         # rcutils writes each node's own .log file into this run's directory
         SetEnvironmentVariable("ROS_LOG_DIR", str(LOG_DIR)),
-        # Python nodes (route_server, orchestrator, bridge) flush output
-        # immediately so nothing is lost from launch.log on crash
+        # Python nodes (route_server, orchestrator) flush output immediately
+        # so nothing is lost from launch.log on crash
         SetEnvironmentVariable("PYTHONUNBUFFERED", "1"),
     ]
 
     # ══════════════════════════════════════════════════════════════════════
-    # LOCALIZATION NODES
+    # LOCALIZATION
     # ══════════════════════════════════════════════════════════════════════
 
-    # Static TFs for Gazebo frame names
+    # ── Sim-only: static TFs mapping Gazebo sensor frames to base_link ────
+    # (On the robot the bridge publishes base_link->lidar_link and the URDF
+    #  supplies the rest; in Gazebo the sensor frames carry model-scoped names.)
     static_tf_gazebo_velodyne = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="gazebo_velodyne_frame_tf",
         arguments=["0.3", "0", "0.145", "0", "0", "0",
                     "base_link", "M20/base_link/velodyne_hdl32e"],
+        condition=IfCondition(sim),
     )
 
     static_tf_gazebo_imu = Node(
@@ -127,22 +145,24 @@ def generate_launch_description():
         name="gazebo_imu_frame_tf",
         arguments=["0.0632", "-0.0268", "-0.0435", "0", "0", "0",
                     "base_link", "M20/base_link/imu_sensor"],
+        condition=IfCondition(sim),
     )
 
-    # Convert 3D PointCloud2 -> 2D LaserScan for AMCL
+    # Convert 3D PointCloud2 -> 2D LaserScan for AMCL + costmaps.
+    # Generic input /lidar/points in BOTH modes (bridge or Gazebo supplies it).
     pointcloud_to_laserscan = Node(
         package="pointcloud_to_laserscan",
         executable="pointcloud_to_laserscan_node",
         name="pointcloud_to_laserscan",
         parameters=[{
-            "use_sim_time": True,
+            "use_sim_time": use_sim_time,
             "target_frame": "base_link",
             "min_height": -0.1,
             "max_height": 0.5,
             "angle_min": -3.14159,
             "angle_max": 3.14159,
-            # 2*pi/1024 — must match the gpu_lidar horizontal sample count in
-            # M20_velodyne.sdf, else the scan is padded with interleaved inf bins.
+            # 2*pi/1024 — matches the sim gpu_lidar horizontal sample count in
+            # M20_velodyne.sdf; also a sane bin width for the real merged cloud.
             "angle_increment": 0.00614,
             "range_min": 0.9,
             "range_max": 70.0,
@@ -150,34 +170,59 @@ def generate_launch_description():
             "use_inf": True,
         }],
         remappings=[
-            ("cloud_in", "/M20/LIDAR/VELODYNE"),
-            ("scan", "/M20/scan"),
+            ("cloud_in", "/lidar/points"),
+            ("scan", "/scan"),
         ],
     )
 
-    # rf2o scan-matching odometry
+    # Sim-only: rf2o scan-matching odometry -> /odom (the robot bridge supplies
+    # /odom from the onboard LIO fusion instead).
     rf2o_laser_odometry = Node(
         package="rf2o_laser_odometry",
         executable="rf2o_laser_odometry_node",
         name="rf2o_laser_odometry",
         parameters=[{
-            "use_sim_time": True,
-            "laser_scan_topic": "/M20/scan",
-            "odom_topic": "/odom_rf2o",
+            "use_sim_time": use_sim_time,
+            "laser_scan_topic": "/scan",
+            "odom_topic": "/odom",
             "base_frame_id": "base_link",
             "odom_frame_id": "odom",
             "init_pose_from_topic": "",
             "publish_tf": False,
             "freq": 10.0,
         }],
+        condition=IfCondition(sim),
     )
 
-    # EKF — fuses LiDAR odom + IMU to publish odom -> base_link
-    ekf_node = Node(
+    # EKF — publishes odom -> base_link and /odometry/filtered.
+    # Sim: fuses rf2o (x,y) + /imu (yaw rate), per navigation_params.yaml.
+    ekf_node_sim = Node(
         package="robot_localization",
         executable="ekf_node",
         name="ekf_node",
-        parameters=[params_file],
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
+        condition=IfCondition(sim),
+    )
+
+    # Robot: /odom is the onboard fused (lidar+IMU) odometry, so odom0 supplies
+    # x, y AND yaw; /imu still contributes yaw-rate as configured in the yaml.
+    ekf_node_robot = Node(
+        package="robot_localization",
+        executable="ekf_node",
+        name="ekf_node",
+        parameters=[
+            params_file,
+            {
+                "use_sim_time": use_sim_time,
+                "odom0": "/odom",
+                "odom0_config": [True,  True,  False,
+                                 False, False, True,
+                                 False, False, False,
+                                 False, False, False,
+                                 False, False, False],
+            },
+        ],
+        condition=UnlessCondition(sim),
     )
 
     # Map server — serves the 2D occupancy grid
@@ -187,7 +232,8 @@ def generate_launch_description():
         name="map_server",
         parameters=[
             params_file,
-            {"yaml_filename": map_yaml},
+            # params_file hardcodes use_sim_time: true — override wins here
+            {"yaml_filename": map_yaml, "use_sim_time": use_sim_time},
         ],
     )
 
@@ -196,7 +242,7 @@ def generate_launch_description():
         package="nav2_amcl",
         executable="amcl",
         name="amcl",
-        parameters=[params_file],
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -237,7 +283,7 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
-    # Controller server — DWB local planner
+    # Controller server — DWB local planner (publishes /cmd_vel)
     controller_server = Node(
         package="nav2_controller",
         executable="controller_server",
@@ -246,30 +292,11 @@ def generate_launch_description():
         parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
-    # Behavior server — recovery behaviors (BackUp) — DISABLED
-    # (orchestrator skips BACKUP recovery when the action server is absent)
-    # behavior_server = Node(
-    #     package="nav2_behaviors",
-    #     executable="behavior_server",
-    #     name="behavior_server",
-    #     output="screen",
-    #     parameters=[params_file, {"use_sim_time": use_sim_time}],
-    # )
-
     # Linear orchestrator — drives planner->smoother->controller pipeline
     linear_orchestrator = Node(
         package="rl_deploy",
         executable="linear_orchestrator.py",
         name="linear_orchestrator",
-        output="screen",
-        parameters=[{"use_sim_time": use_sim_time}],
-    )
-
-    # Velocity bridge — /cmd_vel -> /M20/cmd_vel with clamping
-    cmd_vel_bridge = Node(
-        package="rl_deploy",
-        executable="m20_cmd_vel_bridge.py",
-        name="m20_cmd_vel_bridge",
         output="screen",
         parameters=[{"use_sim_time": use_sim_time}],
     )
@@ -282,7 +309,7 @@ def generate_launch_description():
         package="nav2_lifecycle_manager",
         executable="lifecycle_manager",
         name="lifecycle_manager_navigation",
-        parameters=[params_file],
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
     )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -292,11 +319,12 @@ def generate_launch_description():
         + log_env
         + [
             # Localization (order matters for TF readiness)
-            static_tf_gazebo_velodyne,
-            static_tf_gazebo_imu,
+            static_tf_gazebo_velodyne,      # sim only
+            static_tf_gazebo_imu,           # sim only
             pointcloud_to_laserscan,
-            rf2o_laser_odometry,
-            ekf_node,
+            rf2o_laser_odometry,            # sim only
+            ekf_node_sim,                   # sim only
+            ekf_node_robot,                 # robot only
             map_server,
             amcl,
             # Navigation
@@ -304,9 +332,7 @@ def generate_launch_description():
             planner_server,
             smoother_server,
             controller_server,
-            # behavior_server,  # disabled — BackUp recovery not used
             linear_orchestrator,
-            cmd_vel_bridge,
             # Lifecycle (activates map_server, amcl, planner, smoother, controller)
             lifecycle_manager,
         ]

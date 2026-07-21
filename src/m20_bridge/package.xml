@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>m20_bridge</name>
+  <version>1.0.0</version>
+  <description>
+    DeepRobotics Lynx M20 Pro per-robot bridge layer. Speaks the robot's UDP
+    Inspection Protocol and re-publishes the onboard DDS sensors under the
+    generic contract consumed by the robot-agnostic nav_core (rl_deploy):
+    /lidar/points, /imu, /odom, /joint_states, /robot_description, and the
+    base_link->lidar_link TF; converts /cmd_vel into UDP axis commands.
+    Swap this package to port nav_core to another robot.
+  </description>
+  <maintainer email="srikrishna.rameshiyer@stengg.com">srikrishna</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <!-- restamp_relay.py (shared clock-offset util) and the M20 URDF asset -->
+  <exec_depend>rl_deploy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

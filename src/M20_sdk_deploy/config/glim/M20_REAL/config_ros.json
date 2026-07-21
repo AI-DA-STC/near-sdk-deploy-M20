@@ -50,13 +50,15 @@
     // Points config
     "keep_raw_points": false,
     // IMU config
-    // Negative offset to compensate for IMU running ahead of LiDAR in simulation
+    // imu_time_offset: calibrate offline by correlating IMU gyro vs scan-match
+    // angular rate if the map bends on turns. acc_scale=1.0 assumes /imu accel is
+    // m/s^2 (ROS convention) — verify |acc| ~= 9.8 at rest in the bag.
     "imu_time_offset": 0.0,
     "points_time_offset": 0.0,
     "acc_scale": 1.0,
-    // TF config
-    "imu_frame_id": "imu_sensor",
-    "lidar_frame_id": "velodyne_hdl32e",
+    // TF config — match the frame_ids the m20_bridge restamp nodes stamp
+    "imu_frame_id": "imu_link",
+    "lidar_frame_id": "lidar_link",
     "base_frame_id": "base_link",
     "odom_frame_id": "odom",
     "map_frame_id": "map",

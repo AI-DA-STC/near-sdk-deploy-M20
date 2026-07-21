@@ -1,16 +1,28 @@
 # =============================================================================
-# Deployment image for the M20 robot.
+# Deployment image for the M20 robot (ONE image, TWO containers).
 #
 # This is the SLIM, on-robot counterpart to .devcontainer/Dockerfile.
 # It starts from ros-base (NO Gazebo, NO RViz, NO simulation stack) and builds
-# only what the robot needs to run at runtime.
+# the whole runtime workspace: the robot-agnostic nav_core (rl_deploy) AND the
+# M20-specific bridge (m20_bridge). Two containers run from this one image:
+#
+#   nav_core   : ros2 launch rl_deploy   navigation.launch.py sim:=false
+#   m20_bridge : ros2 launch m20_bridge  m20_bridge.launch.py
+#
+# The split is LOGICAL (two launch files); building one image keeps the offline
+# transfer a single tar. Porting to another robot = add a <robot>_bridge package
+# and point the bridge container at its launch file; nav_core is untouched.
+# See docker-compose.yml for the wiring.
 #
 # Build (from the repo root, so the build context includes src/):
 #   docker build -f Dockerfile.deploy -t m20-deploy:humble .
 #
-# Run on the robot (host networking for DDS, mount devices as needed):
-#   docker run --rm -it --network=host --ipc=host \
-#       --device=/dev/... m20-deploy:humble
+# Run (preferred): docker compose up
+#   or manually, two containers:
+#   docker run --rm -it --network=host --ipc=host m20-deploy:humble \
+#       ros2 launch m20_bridge m20_bridge.launch.py
+#   docker run --rm -it --network=host --ipc=host -v ~/maps:/root/ros_ws/maps \
+#       m20-deploy:humble ros2 launch rl_deploy navigation.launch.py sim:=false
 # =============================================================================
 FROM ros:humble-ros-base
 
@@ -25,15 +37,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-colcon-common-extensions \
         python3-rosdep \
         ros-humble-navigation2 \
+        ros-humble-robot-state-publisher \
         ros-humble-rmw-cyclonedds-cpp \
         ros-humble-diagnostic-updater \
     && rm -rf /var/lib/apt/lists/*
 
 # Full Nav2 stack (above) so every planner/controller/critic plugin is present
-# regardless of what package.xml declares; CycloneDDS because FastDDS drops Nav2
-# lifecycle service responses in-container. Match this RMW on every process that
-# talks to the robot.
-ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# regardless of what package.xml declares.
+#
+# RMW: the M20 Pro's onboard publishers (rsdriver lidar, AOS /IMU_YESENSE and
+# /LIO_ODOM that m20_bridge subscribes) are FastDDS — CycloneDDS nodes cannot
+# discover them, so the robot stack MUST run rmw_fastrtps_cpp. The FastDDS
+# profile whitelists loopback (rsdriver + cross-container DDS on the GOS host)
+# plus the internal NIC (m20_bridge -> AOS) and external NIC (laptop RViz).
+# CycloneDDS remains installed and is still used in the DEV container
+# (where it works around an in-container Nav2 lifecycle-service bug); if that
+# bug ever reproduces on the robot under FastDDS, tune this profile rather
+# than switching RMW.
+ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+ENV FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml
 
 WORKDIR /root/ros_ws
 
@@ -52,6 +74,12 @@ RUN pip install --no-cache-dir -r requirements-deploy.txt
 #     NOT needed here. Drop it so colcon never sees its integration/ packages.
 COPY src/ ./src/
 RUN rm -rf src/src/SWAGGER
+
+# FastDDS profile (see ENV above) + pyprojroot marker: navigation.launch.py
+# locates the workspace root via pyprojroot.here(), which needs a marker file —
+# .git is excluded by .dockerignore, so provide the canonical .here marker.
+COPY config/fastdds_profile_gos.xml ./config/fastdds_profile_gos.xml
+RUN touch /root/ros_ws/.here
 
 # Resolve runtime dependencies.
 #

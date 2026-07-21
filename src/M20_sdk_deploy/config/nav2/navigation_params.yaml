@@ -25,7 +25,7 @@ amcl:
     odom_frame_id: odom
     global_frame_id: map
     # Topic
-    scan_topic: /M20/scan
+    scan_topic: /scan
     # Particle filter
     min_particles: 500
     max_particles: 2000
@@ -65,8 +65,8 @@ ekf_node:
     base_link_frame: base_link
     world_frame: odom
 
-    # --- Source 0: rf2o scan-matching odometry (x, y only) ---
-    odom0: /odom_rf2o
+    # --- Source 0: robot odometry (rf2o in sim / onboard fused odom on robot) ---
+    odom0: /odom
     odom0_config: [true,  true,  false,   # x, y, z
                     false, false, false,   # roll, pitch, yaw (IMU owns heading)
                     false, false, false,   # vx, vy, vz
@@ -75,7 +75,7 @@ ekf_node:
     odom0_differential: true
 
     # --- Source 1: IMU (yaw angular velocity only) ---
-    imu0: /M20/IMU
+    imu0: /imu
     imu0_config: [false, false, false,   # x, y, z
                    false, false, false,   # roll, pitch, yaw
                    false, false, false,   # vx, vy, vz
@@ -251,9 +251,9 @@ local_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: m20_scan
-        m20_scan:
-          topic: /M20/scan
+        observation_sources: scan
+        scan:
+          topic: /scan
           data_type: "LaserScan"
           marking: true
           clearing: true
@@ -291,9 +291,9 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
-        observation_sources: m20_scan
-        m20_scan:
-          topic: /M20/scan
+        observation_sources: scan
+        scan:
+          topic: /scan
           data_type: "LaserScan"
           marking: true
           clearing: true

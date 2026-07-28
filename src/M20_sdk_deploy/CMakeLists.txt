@@ -15,12 +15,20 @@ add_definitions(-w)
 add_compile_options(-fPIC)
 
 # 配置选项
-set(BUILD_PLATFORM "x86" CACHE STRING "Target platform (x86 or arm)")
-
-if(BUILD_PLATFORM STREQUAL "arm")
-  set(CMAKE_C_COMPILER "aarch64-linux-gnu-gcc")
-  set(CMAKE_CXX_COMPILER "aarch64-linux-gnu-g++") 
+# Auto-detect the target platform from the actual target arch so the correct
+# prebuilt third_party libs (onnxruntime) AND link flags are chosen WITHOUT
+# relying on -DBUILD_PLATFORM being threaded through colcon --cmake-args (which
+# silently fell back to x86 and linked the x86 libonnxruntime.so). On the arm64
+# deploy image (native on the robot, or QEMU on the workstation)
+# CMAKE_SYSTEM_PROCESSOR is aarch64; an ordinary x86 dev build stays x86.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+  set(BUILD_PLATFORM "arm" CACHE STRING "Target platform (x86 or arm)" FORCE)
+else()
+  set(BUILD_PLATFORM "x86" CACHE STRING "Target platform (x86 or arm)")
 endif()
+# NB: no CMAKE_C/CXX_COMPILER override here — setting it after project() (line 3)
+# is a no-op, and the deploy image compiles natively (real gcc; under QEMU when
+# building arm64 on an x86 workstation), so no cross toolchain is needed.
 
 # 查找依赖包
 find_package(ament_cmake REQUIRED)
@@ -62,7 +70,7 @@ file(GLOB_RECURSE STATE_MACHINE_SRC "state_machine/*.c*")
 add_executable(rl_deploy main.cpp ${STATE_MACHINE_SRC})
 
 add_library(onnxruntime SHARED IMPORTED)
-set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${THIRD_PARTY}/onnxruntime//${BUILD_PLATFORM}/lib/libonnxruntime.so")
+set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${THIRD_PARTY}/onnxruntime/${BUILD_PLATFORM}/lib/libonnxruntime.so")
 
 ament_target_dependencies(rl_deploy
   rclcpp

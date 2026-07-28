@@ -163,17 +163,58 @@ Everything from TL1–TL4 running, policy in mode `6`, bridge up. In RViz click 
 
 ## Build + offline transfer
 
-```bash
-# workstation (arm64 for the GOS SoC; buildx if cross-building from x86)
-# docker build -f Dockerfile.deploy -t m20-deploy:humble .          # native arm64
-docker buildx build --platform linux/arm64 -f Dockerfile.deploy -t m20-deploy:humble --load .
+Two hops, two mechanisms:
+- **WS → AOS**: `docker pull` from a registry running on the laptop — shows
+  per-layer progress and moves only changed layers on each rebuild.
+- **AOS → GOS**: manual `docker save | scp | load` (GOS is segmented behind AOS
+  and has no internet — see the note below).
 
-docker save m20-deploy:humble | gzip > m20-deploy.tar.gz          # one tar
-# router LAN (no internet): copy WS → AOS (has the router link) → GOS
-scp m20-deploy.tar.gz user@10.21.31.103:/tmp/                     # WS → AOS
-ssh user@10.21.31.103 'scp /tmp/m20-deploy.tar.gz user@10.21.31.104:/tmp/'   # AOS → GOS
-ssh -J user@10.21.31.103 user@10.21.31.104 'gunzip -c /tmp/m20-deploy.tar.gz | docker load'
+### One-time setup
+QEMU emulators (cross-building arm64 on x86; resets on reboot unless persisted):
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
+buildx builder (the default docker driver can't cross-build reliably):
+```bash
+docker buildx create --name multiarch --driver docker-container --use --bootstrap
+```
+A local image registry on the laptop (persists across reboots):
+```bash
+docker run -d --restart=always -p 5000:5000 --name registry registry:2
+```
+On **AOS**, trust the laptop's plain-HTTP registry, then restart docker:
+```bash
+# /etc/docker/daemon.json   (<WS_IP> = laptop's address on the 10.21.31.x LAN)
+{ "insecure-registries": ["<WS_IP>:5000"] }
+sudo systemctl restart docker
+```
+
+### Each change: build on WS, pull on AOS
+```bash
+# WS (laptop): build arm64, then push to the local registry.
+# NOTE: --load into the host daemon first, THEN push — buildx's --push can't
+# see localhost:5000 (buildkit runs in its own container).
+docker buildx build --platform linux/arm64 -f Dockerfile.deploy -t m20-deploy:humble --load .
+docker tag  m20-deploy:humble localhost:5000/m20-deploy:humble   # localhost = auto-insecure, no config
+docker push localhost:5000/m20-deploy:humble                     # progress + only changed layers
+```
+```bash
+# AOS: pull the arm64 image (progress bars; only changed layers download).
+docker pull --platform linux/arm64 <WS_IP>:5000/m20-deploy:humble
+docker tag  <WS_IP>:5000/m20-deploy:humble m20-deploy:humble     # restore the clean name
+```
+
+### AOS → GOS (manual — GOS reaches only AOS)
+```bash
+SIZE=$(docker image inspect m20-deploy:humble --format='{{.Size}}')
+docker save m20-deploy:humble | pv -s "$SIZE" | gzip > m20-deploy.tar.gz # on AOS
+scp m20-deploy.tar.gz user@10.21.31.104:/tmp/                    # AOS → GOS (direct)
+ssh user@10.21.31.104 'gunzip -c /tmp/m20-deploy.tar.gz | docker load'
+```
+> GOS (10.21.31.104) sits behind AOS with no internet, so it can't pull from the
+> laptop. To make this hop incremental too, run a second `registry:2` on AOS,
+> push to it, and `docker pull` from GOS — at the cost of docker + a registry on
+> AOS.
 
 ## Run
 

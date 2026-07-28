@@ -8,16 +8,21 @@ its /cmd_vel back to the robot:
 
   m20_udp_node    UDP Inspection Protocol <-> /joint_states, /m20/telemetry,
                   /robot/ready, and (when enable_tx) /cmd_vel -> axis commands
-  restamp_imu     /IMU_YESENSE (AOS DDS) -> /imu     (offset: preserve 200Hz dt)
-  restamp_odom    /LIO_ODOM   (AOS DDS)  -> /odom     (offset)
-  restamp_lidar   /LIDAR/POINTS (GOS rsdriver) -> /lidar/points (arrival = rename)
+  restamp_imu     /IMU          -> /imu   (offset: preserve 200Hz dt)
+  restamp_lidar   /LIDAR/POINTS -> /lidar/points (offset)
+  rtsp_camera1/2  RTSP video1/2 (AOS :8554) -> /camera1, /camera2
   static TF       base_link -> lidar_link
   robot_state_publisher   M20 URDF (from rl_deploy) -> /robot_description + TF
 
-Reliability of the AOS DDS publishers is confirmed in test T1; the values below
-are the common defaults (sensor topics best_effort, odom reliable). A wrong
-value makes the subscription silently match nothing — restamp_relay logs a loud
-INCOMPATIBLE-QoS error if so.
+/IMU and /LIDAR/POINTS reach this host directly from the M20, so no AOS-side
+relay is involved. They still carry the robot's clock, so both use 'offset' to
+rebase onto the GOS clock while PRESERVING inter-sample dt — 'arrival' would
+collapse it, which hurts the LIO. /LIO_ODOM is dropped: the GOS-side LIO
+produces odometry locally.
+
+restamp reliability=best_effort matches the M20 publisher (a reliable pub
+satisfies a best_effort sub); a mismatch would silently match nothing, so
+restamp_relay logs a loud INCOMPATIBLE-QoS error if it sees one.
 """
 
 import os
@@ -28,6 +33,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _robot_description():
@@ -47,6 +53,7 @@ def generate_launch_description():
     enable_tx = LaunchConfiguration("enable_tx")
     robot_ip = LaunchConfiguration("robot_ip")
     viz_lidar2 = LaunchConfiguration("viz_lidar2")
+    enable_cameras = LaunchConfiguration("enable_cameras")
 
     args = [
         DeclareLaunchArgument(
@@ -57,6 +64,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "viz_lidar2", default_value="false",
             description="also relay the 2nd lidar cloud for RViz (extra CPU)"),
+        DeclareLaunchArgument(
+            "enable_cameras", default_value="true",
+            description="pull the two RTSP camera streams -> /camera1, /camera2 "
+                        "(set false to save bandwidth/CPU)"),
     ]
 
     udp_node = Node(
@@ -68,26 +79,18 @@ def generate_launch_description():
     restamp_imu = Node(
         package="rl_deploy", executable="restamp_relay.py", name="restamp_imu",
         output="screen", parameters=[{
-            "msg_type": "imu", "input_topic": "/IMU_YESENSE",
+            "msg_type": "imu", "input_topic": "/IMU",
             "output_topic": "/imu", "frame_id": "imu_link",
             "mode": "offset", "reliability": "best_effort"}])
 
-    restamp_odom = Node(
-        package="rl_deploy", executable="restamp_relay.py", name="restamp_odom",
-        output="screen", parameters=[{
-            "msg_type": "odometry", "input_topic": "/LIO_ODOM",
-            "output_topic": "/odom", "frame_id": "odom",
-            "child_frame_id": "base_link", "mode": "offset",
-            "reliability": "reliable"}])
-
-    # rsdriver runs on THIS host, so /LIDAR/POINTS already carries the GOS clock;
-    # 'arrival' mode is effectively a cheap topic+frame rename.
+    # /LIDAR/POINTS carries the robot's clock (not this host's) — use 'offset' to
+    # rebase onto the GOS clock while preserving the 10 Hz spacing the LIO relies on.
     restamp_lidar = Node(
         package="rl_deploy", executable="restamp_relay.py", name="restamp_lidar",
         output="screen", parameters=[{
             "msg_type": "pointcloud2", "input_topic": "/LIDAR/POINTS",
             "output_topic": "/lidar/points", "frame_id": "lidar_link",
-            "mode": "arrival", "reliability": "best_effort"}])
+            "mode": "offset", "reliability": "best_effort"}])
 
     restamp_lidar2 = Node(
         package="rl_deploy", executable="restamp_relay.py", name="restamp_lidar2",
@@ -110,8 +113,24 @@ def generate_launch_description():
         parameters=[{"robot_description": _robot_description(),
                      "use_sim_time": False}])
 
+    # M20 wide-angle cameras over RTSP (vendor manual Appendix 3), decoded and
+    # republished as sensor_msgs/Image. RTSP is plain TCP, so unlike the DDS
+    # sensors these are reachable straight from the GOS.
+    def _camera(name, stream, topic, frame):
+        return Node(
+            package="m20_bridge", executable="rtsp_camera_node.py",
+            name=name, output="screen", condition=IfCondition(enable_cameras),
+            parameters=[{
+                "rtsp_url": ParameterValue(
+                    ["rtsp://", robot_ip, ":8554/", stream], value_type=str),
+                "output_topic": topic, "frame_id": frame, "fps": 15.0}])
+
+    cam1 = _camera("rtsp_camera1", "video1", "/camera1", "camera1_link")
+    cam2 = _camera("rtsp_camera2", "video2", "/camera2", "camera2_link")
+
     return LaunchDescription(args + [
         udp_node,
-        restamp_imu, restamp_odom, restamp_lidar, restamp_lidar2,
+        restamp_imu, restamp_lidar, restamp_lidar2,
+        cam1, cam2,
         static_tf_lidar, rsp,
     ])

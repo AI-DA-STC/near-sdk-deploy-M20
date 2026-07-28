@@ -1,56 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  FastDDS profile for the nav container on the M20 Pro GOS host (10.21.31.104).
-
-  Interface whitelist:
-    127.0.0.1     - discovers the GOS-local rsdriver lidar topics, which are
-                    loopback-bound (a default participant cannot see them)
-    10.21.31.103  - AOS: initial unicast peer for the nav_cmd_bridge relays
-    10.21.31.104  - internal subnet toward AOS (relayed LIO odom / joint
-                    states in, /M20/cmd_vel out to the twist_to_navcmd gateway)
-    10.21.34.104  - external Ethernet port; lets a laptop plugged into the
-                    robot see the nav topics with RViz
-
-  Use on the robot:
-    docker run ... -e RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
-      -e FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml ...
-  (Dockerfile.deploy bakes both as defaults.)
-
-  initialPeersList provides unicast discovery to AOS in case multicast does
-  not cross the internal switch — harmless when it does.
--->
 <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-  <transport_descriptors>
-    <transport_descriptor>
-      <transport_id>gos_udp</transport_id>
-      <type>UDPv4</type>
-      <interfaceWhiteList>
-        <address>127.0.0.1</address>
-        <address>10.21.31.104</address>
-        <address>10.21.34.104</address>
-      </interfaceWhiteList>
-    </transport_descriptor>
-    <transport_descriptor>
-      <transport_id>gos_shm</transport_id>
-      <type>SHM</type>
-    </transport_descriptor>
-  </transport_descriptors>
-  <participant profile_name="gos_default" is_default_profile="true">
-    <rtps>
-      <userTransports>
-        <transport_id>gos_shm</transport_id>
-        <transport_id>gos_udp</transport_id>
-      </userTransports>
-      <useBuiltinTransports>false</useBuiltinTransports>
-      <builtin>
-        <initialPeersList>
-          <locator>
-            <udpv4>
-              <address>10.21.31.103</address>
-            </udpv4>
-          </locator>
-        </initialPeersList>
-      </builtin>
-    </rtps>
-  </participant>
+    <transport_descriptors>
+        <transport_descriptor>
+            <transport_id>udp_transport</transport_id>
+            <type>UDPv4</type>
+            <interfaceWhiteList>
+                <address>127.0.0.1</address>
+                <address>10.21.31.104</address>
+            </interfaceWhiteList>
+            <sendBufferSize>8388608</sendBufferSize>      <!-- 8 MB -->
+            <receiveBufferSize>8388608</receiveBufferSize> <!-- 8 MB -->
+            <maxMessageSize>65500</maxMessageSize>
+            <non_blocking_send>true</non_blocking_send>
+        </transport_descriptor>
+    </transport_descriptors>
+
+    <participant profile_name="ros2_daemon" is_default_profile="true">
+        <rtps>
+            <builtin>
+                <discovery_config>
+                    <discoveryProtocol>SIMPLE</discoveryProtocol>
+                    <EDP>SIMPLE</EDP>
+                    <simpleEDP>
+                        <PUBWRITER_SUBREADER>true</PUBWRITER_SUBREADER>
+                        <PUBREADER_SUBWRITER>true</PUBREADER_SUBWRITER>
+                    </simpleEDP>
+                </discovery_config>
+            </builtin>
+
+            <!-- SHM transport intentionally omitted; UDP only. -->
+            <userTransports>
+                <transport_id>udp_transport</transport_id>
+            </userTransports>
+            <useBuiltinTransports>false</useBuiltinTransports>
+        </rtps>
+    </participant>
 </profiles>

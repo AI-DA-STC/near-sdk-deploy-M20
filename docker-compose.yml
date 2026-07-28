@@ -23,7 +23,15 @@ services:
     ipc: host
     environment:
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # UDP-ONLY copy of the robot's /opt/robot/fastdds.xml (SHM removed). SHM
+      # segments can't be mapped from inside a container ("Unable to Register SHM
+      # Transport"), so discovery works but the bulk sensor DATA — negotiated over
+      # SHM — never arrives. UDP-only forces the robot to deliver over 127.0.0.1.
+      # See config/fastdds_profile_gos.xml.
       - FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml
+    volumes:
+      # Edit the profile on the host and `docker compose up` — no image rebuild.
+      - ./config/fastdds_profile_gos.xml:/root/ros_ws/config/fastdds_profile_gos.xml:ro
     # enable_tx defaults false; set ENABLE_TX=true in the environment to arm
     # the UDP axis-command (Cmd 21) path once it is validated (tests T4-T6).
     command: >
@@ -40,10 +48,13 @@ services:
       - m20_bridge
     environment:
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      # UDP-only container profile — see m20_bridge above for why.
       - FASTRTPS_DEFAULT_PROFILES_FILE=/root/ros_ws/config/fastdds_profile_gos.xml
     volumes:
       # maps + SWAGGER graph produced by the GLIM offline pipeline (host ~/maps)
       - ${HOME}/maps:/root/ros_ws/maps
+      # same UDP-only FastDDS profile as m20_bridge (read-only)
+      - ./config/fastdds_profile_gos.xml:/root/ros_ws/config/fastdds_profile_gos.xml:ro
     command: >
       ros2 launch rl_deploy navigation.launch.py sim:=false
     restart: unless-stopped

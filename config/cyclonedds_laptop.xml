@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- =============================================================================
+     cyclonedds_laptop.xml — WORKSTATION side (RViz2), peer of cyclonedds_gos.xml.
+
+     READ THIS FIRST: a DDS profile is NOT what stands between this laptop and the
+     GOS topics. Measured on the laptop (2026-07-30):
+
+       laptop        192.168.8.236/24  wifi wlp131s0f0, default via 192.168.8.1
+       AOS           192.168.8.103     REACHABLE, 2.5 ms, same L2 (direct ARP)
+       GOS           10.21.31.104      robot's INTERNAL SWITCH ONLY
+       192.168.8.104                   does not exist (ARP FAILED)
+       ip route get 10.21.31.104   ->   via 192.168.8.1 (the wifi router, which
+                                        has no route to 10.21.31.0/24)
+
+     So there is NO IP path from this laptop to the GOS. That is an IP-layer gap
+     BELOW DDS: matching ROS_DOMAIN_ID and RMW_IMPLEMENTATION cannot bridge it, and
+     no value in this file can either. Fix reachability first, then use this file.
+
+     `ping 10.21.31.104` must succeed before any DDS debugging is meaningful.
+
+     PREFERRED FIX — put the laptop on the robot's internal switch. This laptop has
+     an idle wired port (enp130s0, currently NO-CARRIER). Cabling it to the internal
+     switch puts it in the SAME L2 broadcast domain as the GOS, so multicast SPDP
+     works natively and none of the unicast-peer machinery below is needed. It also
+     requires zero changes on the AOS, which DEPLOYMENT.md declares "stock,
+     untouched", and zero changes to cyclonedds_gos.xml:
+       [LAPTOP] sudo ip addr add 10.21.31.50/24 dev enp130s0   # .103=AOS .104=GOS
+                sudo ip link set enp130s0 up
+                ping -c3 10.21.31.104
+     Then set <Interfaces> below to 10.21.31.50 and delete the <Peers> block.
+     (known_hosts already trusts 10.21.31.104 from this laptop, so this path has
+     evidently worked before.)
+
+     Usage, in the same shell as rviz2:
+       export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp    # required; nav_core is Cyclone
+       export ROS_DOMAIN_ID=0                          # matches the GOS containers
+       unset ROS_LOCALHOST_ONLY                        # =1 pins the RMW to loopback
+       export CYCLONEDDS_URI=file://$PWD/config/cyclonedds_laptop.xml
+       rviz2
+     ============================================================================= -->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <!-- MUST name an address that actually exists on this machine. An address
+           that matches no interface is not a harmless placeholder — Cyclone
+           refuses to start:
+             10.21.34.__: does not match an available interface
+             dds_create_participant(domain -1) failed: -1
+           So RViz dies before it ever reaches the network.
+
+           Pinning is needed because Cyclone otherwise picks ONE interface and,
+           on this laptop, three candidates tie. Measured with Verbosity=config:
+             interfaces: lo udp/127.0.0.1(q1) wlp131s0f0 udp/192.168.8.236(q9)
+                         tailscale0 udp/100.105.97.80(q9) docker0 udp/172.17.0.1(q9)
+             using network interface wlp131s0f0 (udp/192.168.8.236)
+                         selected ARBITRARILY from: wlp131s0f0, tailscale0, docker0
+           It chose correctly that run, but "arbitrarily" is Cyclone's own word —
+           equal-quality ties are not stable across reboots or interface ordering.
+
+           Set this to whichever address reaches the GOS:
+             10.21.31.50    once enp130s0 is cabled to the internal switch (preferred)
+             192.168.8.236  if instead you route via the AOS (see <Peers>)
+           Confirm with:  ip route get 10.21.31.104 -->
+      <Interfaces>
+        <NetworkInterface address="10.21.31.50" priority="default" multicast="default"/>
+      </Interfaces>
+
+      <!-- Matches the GOS: multicast for participant discovery, unicast for all
+           DATA. Do not widen to 'true' — that would put the 1.2 MB clouds on
+           multicast. -->
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+
+    <!-- DELETE THIS WHOLE BLOCK if you cabled into the internal switch: on a
+         shared L2 segment multicast SPDP reaches the GOS on its own, and adding
+         peers only adds probe traffic.
+
+         Keep it ONLY for the routed-via-AOS variant, where multicast cannot
+         cross the router hop. Note the port suffix — it matters:
+
+         A <Peer> WITHOUT a port is expanded into one SPDP datagram per
+         participant index in the range 0 .. MaxAutoParticipantIndex-1, at
+         port 7400 + 250*domain + 10 + 2*index. Cyclone's default max of 9
+         therefore probes indices 0..8 only (ports 7410-7426) — and on the GOS
+         the robot's own Fast-DDS holds indices 0-9 while the nav containers land
+         at index 10 and up, so a portless peer at the default would never reach
+         them and would fail in total silence.
+
+         Naming the port skips all of that: 7430 is index 10 on domain 0, one
+         datagram per round instead of 60. Verified on CycloneDDS 0.10.5. Raising
+         MaxAutoParticipantIndex is cheap insurance, not the fix. -->
+    <Discovery>
+      <Peers>
+        <Peer address="10.21.31.104:7430"/>
+      </Peers>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
+    </Discovery>
+
+    <Internal>
+      <!-- SILENTLY CLAMPED to net.core.rmem_max, measured at 212992 (208 KB) on
+           this laptop — far too small for a ~1.2 MB PointCloud2, while small
+           topics like /imu and /tf look perfectly healthy. Raise it here too:
+             sudo sysctl -w net.core.rmem_max=16777216
+           Persist in /etc/sysctl.d/ to survive reboot. -->
+      <SocketReceiveBufferSize min="8MB"/>
+    </Internal>
+
+    <Tracing>
+      <!-- Set to 'config' and re-run to see which interface was actually
+           selected and which peers were reached. First thing to check when RViz
+           shows no topics. Note the trace comes from the ros2 daemon, not the
+           CLI process, so point OutputFile at a file rather than stderr. -->
+      <Verbosity>warning</Verbosity>
+      <OutputFile>stderr</OutputFile>
+    </Tracing>
+  </Domain>
+</CycloneDDS>

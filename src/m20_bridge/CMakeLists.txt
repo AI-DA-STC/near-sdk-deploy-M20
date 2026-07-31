@@ -14,6 +14,7 @@ find_package(ament_cmake REQUIRED)
 install(PROGRAMS
   scripts/m20_udp_node.py
   scripts/rtsp_camera_node.py
+  scripts/cdr_uds_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

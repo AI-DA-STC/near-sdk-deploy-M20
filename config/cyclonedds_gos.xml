@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="lo" priority="default" multicast="default"/>
+        <NetworkInterface address="10.21.31.104" priority="default" multicast="default"/>
+      </Interfaces>
+
+      <!-- spdp: multicast for participant discovery only, unicast for all
+           DATA. Keeps the relayed 1.8 MB clouds off multicast. -->
+      <AllowMulticast>spdp</AllowMulticast>
+      <EnableMulticastLoopback>true</EnableMulticastLoopback>
+
+      <!-- Loopback-tuned fragmentation. /LIDAR/POINTS arrives from the robot's
+           own Fast-DDS publisher as a ~1.2 MB fragmented sample over lo
+           (MTU 65536), so pack fragments into near-64 KB datagrams.
+
+           CAVEAT for RViz over the LAN: a 65500 B datagram sent to the laptop
+           across a 1500-MTU link is IP-fragmented ~45 ways and one lost IP
+           fragment kills it. That only bites if you visualise a point cloud
+           remotely — the nav data path is entirely on lo. If remote cloud viz
+           drops, set MaxMessageSize to 1400B here (and accept the extra
+           syscalls) or view a decimated topic. -->
+      <MaxMessageSize>65500B</MaxMessageSize>
+      <FragmentSize>8000B</FragmentSize>
+    </General>
+
+    <Discovery>
+      <Peers>
+        <!-- Every participant in the nav path is on this host; name it
+             explicitly so discovery never depends on lo multicast working.
+             The laptop is found via SPDP multicast on the NIC above. -->
+        <Peer address="localhost"/>
+      </Peers>
+
+      <!-- REQUIRED, DO NOT DROP. Unicast discovery needs each participant to
+           own a predictable port slot, mapped from a "participant index":
+             discovery = 7400 + 250*domain + 10 + 2*index
+             user      = 7400 + 250*domain + 11 + 2*index
+           'auto' probes indices 0..MaxAutoParticipantIndex, and CycloneDDS
+           defaults that to just 9. The robot's own Fast-DDS stack shares this
+           domain and port space (network_mode host) and holds indices 0-9, so
+           all ten probes fail and the container dies at startup with:
+             Failed to find a free participant index for domain 0
+             rmw_create_node: failed to create domain, error Error
+           Measured: our participants land on index 10 and up. 60 leaves room for
+           ~58 of theirs. Raise it if the error returns; count what is taken with
+             ss -lun | awk '$4 ~ /:74[0-9][0-9]$/' | sort -u
+           The only cost of a larger value is extra SPDP probe packets.
+
+           ParticipantIndex=none does NOT work as an alternative: it takes an
+           ephemeral port and so cannot coexist with the unicast Peers above.
+           Measured on both CycloneDDS 0.7 and 0.10. -->
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
+    </Discovery>
+
+    <Internal>
+      <!-- SILENTLY CLAMPED to net.core.rmem_max (212992 = 208 KB stock). Must
+           be raised on the HOST; a network_mode host container cannot set it:
+             sudo sysctl -w net.core.rmem_max=16777216
+           This is the single most likely reason a large PointCloud2 never
+           arrives while a small Imu does. -->
+      <!-- CycloneDDS 0.10 renamed this; the old
+           <MinimumSocketReceiveBufferSize> still works but logs a
+           "setting moved to" notice on every start. -->
+      <SocketReceiveBufferSize min="8MB"/>
+      <DefragUnreliableMaxSamples>16</DefragUnreliableMaxSamples>
+    </Internal>
+
+    <Tracing>
+      <Verbosity>warning</Verbosity>
+      <OutputFile>stderr</OutputFile>
+    </Tracing>
+  </Domain>
+</CycloneDDS>

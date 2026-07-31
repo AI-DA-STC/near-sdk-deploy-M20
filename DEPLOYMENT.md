@@ -8,23 +8,96 @@ UDP Inspection Protocol + direct DDS.
 AOS 10.21.31.103 (stock, untouched)     ┌ m20_bridge container ─────────────┐  ┌ nav_core container ─────────────┐
  UDP :30000 ─1002/4 joints,vel,estop──► │ m20_udp_node → /joint_states       │  │ p2l /lidar/points → /scan       │
             ◄─heartbeat 1Hz / Cmd21 20Hz│   → /m20/telemetry, /robot/ready   │  │ amcl (map→odom), costmaps       │
- DDS /IMU_YESENSE 200Hz ──────────────► │ restamp /IMU_YESENSE→/imu (offset) │  │ ekf /odom (+/imu) → odom→base   │
- DDS /LIO_ODOM ───────────────────────► │ restamp /LIO_ODOM→/odom  (offset)  │─►│ route_server(graph)→orchestrator│
- rsdriver (GOS-local) /LIDAR/POINTS ───►│ restamp /LIDAR/POINTS→/lidar/points│◄─│ nav2 → /cmd_vel                 │
-                                        │ static TF base_link→lidar_link     │  └─────────────────────────────────┘
+ RTSP :8554 video1/2 ─────────────────► │ rtsp_camera1/2 → /camera1,/camera2 │  │ ekf /odom (+/imu) → odom→base   │
+                                        │                                    │  │ route_server(graph)→orchestrator│
+ GOS-local Foxy/Fast-DDS publishers     │ [Fast-DDS sidecar] /IMU →socket→   │─►│ nav2 → /cmd_vel                 │
+  /IMU 200Hz ─────────────────────────► │   /IMU_fastdds → restamp → /imu    │◄─└─────────────────────────────────┘
+  /LIDAR/POINTS 10Hz ~1.2MB ──────────► │ [Cyclone] restamp /LIDAR/POINTS    │
+   (each needs a DIFFERENT rmw - below) │        → /lidar/points  (offset)   │
+                                        │ static TF base_link→lidar_link     │
  laptop RViz (10.21.34.x) /goal_pose ──────────────────────────────────────────►  route_server
-                                        │ RSP: M20 URDF → /robot_description │        (viz: /robot_description, TF)
+   (must also run rmw_cyclonedds_cpp)   │ RSP: M20 URDF → /robot_description │        (viz: /robot_description, TF)
                                         └────────────────────────────────────┘
 ```
+
+### The two sensors need different middlewares
+
+The M20 publishes `/LIDAR/POINTS` (~1.2 MB, 10 Hz) and `/IMU` (~300 B, 200 Hz)
+from **Foxy over Fast-DDS**, and that is a manufacturer setting. Measured on the
+robot from inside a Humble container:
+
+| topic | CycloneDDS 0.10 | Fast-DDS 2.6 |
+|---|---|---|
+| `/LIDAR/POINTS` | **9.3 Hz, 10.8 MB/s** | matched **nothing** |
+| `/IMU` | matched **nothing** | **200.0 Hz** |
+
+Exactly complementary. `RMW_IMPLEMENTATION` is per-**process**, so no single
+process can read both, and "matched nothing" is a *discovery-level* failure — not
+degraded delivery. QoS and socket buffers were both tried and neither moves it.
+
+So `m20_bridge` runs **CycloneDDS** as its primary RMW, keeping the lidar's
+12 MB/s native, and `m20_bridge.launch.py` spawns one **Fast-DDS sidecar** that
+carries `/IMU` across on a Unix datagram socket:
+
+```
+  imu_uds_source  [Fast-DDS]    /IMU  --raw CDR-->  /tmp/m20_imu_cdr.sock
+  imu_uds_sink    [CycloneDDS]  socket --raw CDR-->  /IMU_fastdds
+  restamp_imu     [CycloneDDS]  /IMU_fastdds -> /imu
+```
+
+`launch`'s `additional_env` gives that one process its own RMW inside the shared
+container. `/IMU` is the stream that gets hopped, not the cloud, because it is
+~60 kB/s against the cloud's ~12 MB/s. Measured through the hop: **200.0 Hz,
+0 dropped**, with stamps and field values intact (raw CDR is copied, never
+decoded, and both ends are Humble so the encoding is identical by construction).
+
+Reproduce the table any time with `scripts/test_humble_ingest.sh`, which takes a
+`TOPIC` override:
+
+```bash
+bash scripts/test_humble_ingest.sh              # /LIDAR/POINTS
+TOPIC=/IMU bash scripts/test_humble_ingest.sh   # /IMU
+```
+
+**Do not "simplify" this onto one RMW** — whichever you choose, one sensor goes
+silent and the LIO dies. `imu_via_fastdds:=false` drops the hop and subscribes
+`/IMU` directly on the container's own RMW; correct only on a robot where that
+RMW can actually see it.
+
+Because a process gets one RMW, `nav_core` must match `m20_bridge`'s primary
+(CycloneDDS). Nothing else is affected — the AOS link is raw UDP and the cameras
+are RTSP over TCP. **Your laptop RViz must also**
+`export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`.
+
+### Investigated and ruled out — please don't re-litigate
+
+- **`net.core.rmem_max`.** A clamped socket buffer really does destroy large
+  fragmented samples, and on a stock 208 KB kernel a 1.8 MB cloud managed only
+  1–2 Hz of 10 over *both* middlewares. But this robot ships **562 MB**, so it
+  was never the cause here. `scripts/preflight_gos.sh` still checks it as a guard.
+- **Subscriber QoS.** The vendor publishes RELIABLE and the original
+  subscription was best_effort, which matches but never re-requests a lost
+  fragment. Plausible, and wrong: measured equivalent (9.33 vs 9.25 Hz on the
+  lidar, 200 Hz either way on the IMU), and the failing cells fail identically
+  under both settings. QoS is not what separates the two middlewares here.
+- **A CycloneDDS relay in a Foxy sidecar.** Built and measured. CycloneDDS 0.7 —
+  what Foxy ships — **segfaults in `rmw_create_node`** the instant it exchanges
+  discovery with this robot's Fast-DDS participants, on domain 0, with any
+  config including stock defaults. Configs that skip those participants' ports
+  survive but then receive nothing, because those participants *are* the
+  publishers. Surviving and receiving are mutually exclusive, so that approach
+  cannot work. Removed.
+- **Participant-index exhaustion** is real and still guarded against, see
+  `MaxAutoParticipantIndex` in `config/cyclonedds_gos.xml`.
 
 **Generic contract** (nav_core knows only these — port to another robot by
 writing a new `<robot>_bridge` package + launch; nav_core is untouched):
 
 | dir | topic | type | produced by |
 |-----|-------|------|-------------|
-| IN  | `/lidar/points` | PointCloud2 | bridge (rsdriver rename) |
-| IN  | `/imu`   | Imu      | bridge (restamp /IMU_YESENSE) |
-| IN  | `/odom`  | Odometry | bridge (restamp /LIO_ODOM) |
+| IN  | `/lidar/points` | PointCloud2 | bridge (restamp `/LIDAR/POINTS`) |
+| IN  | `/imu`   | Imu      | bridge (Fast-DDS sidecar → `/IMU_fastdds` → restamp) |
+| IN  | `/odom`  | Odometry | bridge (GOS-side LIO) |
 | IN  | `/joint_states` + `/robot_description` + TF `base_link→lidar_link` | | bridge |
 | IN  | `/goal_pose`, `/initialpose` | | laptop RViz |
 | OUT | `/cmd_vel` | Twist | nav_core DWB → bridge → UDP Cmd 21 |
@@ -237,13 +310,71 @@ until T4–T6 pass.** Keep a person on the hardware e-stop for every powered tes
 ### T0 — image sanity (bench, no robot)
 - `docker compose config` parses; `docker run --rm m20-deploy:humble ros2 pkg list | grep -E 'rl_deploy|m20_bridge'` shows both.
 - `docker run --rm m20-deploy:humble ros2 launch rl_deploy navigation.launch.py sim:=false --print` and `... m20_bridge m20_bridge.launch.py --print` both succeed (run from `/root/ros_ws`).
+- **Architecture check.** The GOS is arm64; build the image for it or it will not
+  exec. `docker image inspect m20-deploy:humble --format '{{.Architecture}}'`
+  must print `arm64`. From an x86 laptop, register QEMU first
+  (`docker run --privileged --rm tonistiigi/binfmt --install arm64` — this resets
+  on reboot), then
+  `docker buildx build --platform linux/arm64 -f Dockerfile.deploy -t m20-deploy:humble --load .`
+- If a build ever produces an image whose contents you do not recognise, rebuild
+  with `--no-cache`; a stale buildx layer has served foreign files here before.
 
-### T1 — DDS visibility from inside the bridge container (robot powered, on stand)
+### T0.5 — host sanity (before any container)
+- `./scripts/preflight_gos.sh` → `PREFLIGHT OK`. It confirms `net.core.rmem_max`
+  is large and prints the **type and reliability** of `/LIDAR/POINTS` and `/IMU`
+  as the robot advertises them.
+- Not the historical failure cause on this robot (it ships 562 MB) but a cheap
+  guard: a clamped buffer genuinely does destroy large fragmented samples, and
+  `config/cyclonedds_gos.xml` asks CycloneDDS for 8 MB as a hard requirement.
+
+### T1 — the sensor hop (robot powered, on stand)
 Gate for everything DDS. In the `m20_bridge` container shell:
-- `ros2 topic list` shows `/IMU_YESENSE`, `/LIO_ODOM`, `/LIDAR/POINTS`.
-- `ros2 topic hz /IMU_YESENSE` (expect ~200 Hz — the diagram said 20; confirm the real rate), `/LIO_ODOM`, `/LIDAR/POINTS` (~10 Hz).
-- `ros2 topic info -v /IMU_YESENSE /LIO_ODOM /LIDAR/POINTS` → record **reliability** + **type** (confirm `/LIO_ODOM` is `nav_msgs/Odometry`). If a `restamp_*` node logs `INCOMPATIBLE QoS`, fix `reliability` in `m20_bridge.launch.py` and rebuild.
-- If discovery is flaky: widen the FastDDS initial-peer range / drop SHM in `config/fastdds_profile_gos.xml`. Confirm `--ipc=host` is set (SHM with the host rsdriver).
+
+- `ros2 topic list` shows `/LIDAR/POINTS` and `/IMU`. **This only works under
+  `rmw_cyclonedds_cpp`** — see the RMW section at the top of this file.
+- `ros2 topic hz /LIDAR/POINTS` ≈ 10 Hz, `/IMU` ≈ 200 Hz.
+- `ros2 topic hz /lidar/points /imu` ≈ the same rates, confirming the restamps.
+- **The /IMU hop.** `/IMU` is read by a Fast-DDS sidecar, not by this container's
+  CycloneDDS, so `ros2 topic hz /IMU` from a normal shell here shows **nothing** —
+  that is expected, not a fault. Check the hop instead:
+  ```bash
+  ros2 topic hz /IMU_fastdds          # ≈200 Hz — the sidecar's output
+  docker logs m20_bridge | grep cdr_uds_relay   # [source]/[sink] heartbeats
+  ```
+  Both heartbeats should report ~200 Hz with `0 dropped`. A `[source] 0 msg`
+  means Fast-DDS is not seeing `/IMU`; a `[sink] 0 msg` with a healthy source
+  means the socket path differs between the two processes.
+- `ros2 topic info -v /LIDAR/POINTS /IMU` → both should read
+  `RELIABLE`, matching `sensor_reliability:=reliable` in `docker-compose.yml`. A
+  mismatch matches *nothing* and looks exactly like a transport fault;
+  `restamp_relay` logs a loud `INCOMPATIBLE QoS` if it sees one.
+
+**If `/imu` is silent:** the sidecar is the only thing that can read `/IMU`.
+Confirm it is running (`docker logs m20_bridge | grep imu_uds`), that
+`imu_via_fastdds` is `true`, and re-measure with
+`TOPIC=/IMU bash scripts/test_humble_ingest.sh` — cells C/D (Fast-DDS) should
+pass and A/B (CycloneDDS) should not. If C/D now fail too, the robot stopped
+publishing.
+
+**If `/lidar/points` is silent, in this order:**
+
+1. **Confirm the RMW.** `docker exec m20_bridge printenv RMW_IMPLEMENTATION` must
+   be `rmw_cyclonedds_cpp`. Under Fast-DDS this topic delivers **zero** samples
+   on this robot. Run `scripts/test_humble_ingest.sh` to see all four
+   RMW × QoS combinations measured side by side.
+2. **`Failed to find a free participant index for domain 0`** (container exits at
+   startup). Discovery is unicast, so each participant needs a free RTPS port
+   slot, and `auto` only probes indices `0..MaxAutoParticipantIndex` — Cyclone's
+   default is **9**, and the robot's own Foxy stack holds 0–9. The shipped config
+   sets 60; raise it if this returns. Count what is taken with
+   `ss -lun | awk '$4 ~ /:74[0-9][0-9]$/' | sort -u`.
+   `ParticipantIndex=none` does *not* help — verified on CycloneDDS 0.7 and 0.10.
+3. **Config typos.** Set `<Tracing><Verbosity>config</Verbosity>` in
+   `config/cyclonedds_gos.xml`; Cyclone then echoes every parsed setting and
+   flags bad ones. Note it rejects `KB` as a unit — use `B`, `MB` or `MiB`.
+4. **A crash with no message.** Cyclone logs to stderr, which `ros2 launch`
+   block-buffers, so a segfault loses the diagnosis. Point
+   `<OutputFile>` at a file instead and read it after the process dies.
 
 ### T2 — bridge RX only (`enable_tx:=false`)
 - `ros2 topic hz /imu /odom /lidar/points` match the source rates.

@@ -30,6 +30,9 @@
   <exec_depend>python3-opencv</exec_depend>
   <!-- restamp_relay.py (shared clock-offset util) and the M20 URDF asset -->
   <exec_depend>rl_deploy</exec_depend>
+  <!-- drdds/JointsData: the M20 control stack's native joint publication,
+       consumed by m20_joints_node.py -->
+  <exec_depend>drdds</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

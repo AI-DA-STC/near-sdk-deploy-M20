@@ -13,15 +13,15 @@
       "profile": "sensor_data"
     },
     "image_topic": "/image",
-    "imu_frame_id": "imu_sensor",
+    "imu_frame_id": "imu_link",
     "imu_qos": {
       "depth": 100,
       "profile": "sensor_data"
     },
     "imu_time_offset": 0.0,
-    "imu_topic": "/M20/IMU",
+    "imu_topic": "/imu",
     "keep_raw_points": false,
-    "lidar_frame_id": "velodyne_hdl32e",
+    "lidar_frame_id": "lidar_link",
     "map_frame_id": "map",
     "odom_frame_id": "odom",
     "points_qos": {
@@ -29,7 +29,7 @@
       "profile": "sensor_data"
     },
     "points_time_offset": 0.0,
-    "points_topic": "/M20/LIDAR/VELODYNE",
+    "points_topic": "/lidar/points",
     "publish_imu2lidar": true,
     "tf_time_offset": 1e-06
   }

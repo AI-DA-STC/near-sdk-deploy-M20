@@ -6,7 +6,7 @@ UDP Inspection Protocol + direct DDS.
 
 ```
 AOS 10.21.31.103 (stock, untouched)     ┌ m20_bridge container ─────────────┐  ┌ nav_core container ─────────────┐
- UDP :30000 ─1002/4 joints,vel,estop──► │ m20_udp_node → /joint_states       │  │ p2l /lidar/points → /scan       │
+ UDP :30000 ─1002/4 telemetry,estop───► │ m20_udp_node → /m20/telemetry      │  │ p2l /lidar/points → /scan       │
             ◄─heartbeat 1Hz / Cmd21 20Hz│   → /m20/telemetry, /robot/ready   │  │ amcl (map→odom), costmaps       │
  RTSP :8554 video1/2 ─────────────────► │ rtsp_camera1/2 → /camera1,/camera2 │  │ ekf /odom (+/imu) → odom→base   │
                                         │                                    │  │ route_server(graph)→orchestrator│
@@ -130,7 +130,7 @@ Gazebo `gpu_lidar`); this laptop's RTX is fine and the devcontainer already pass
 |-----|-----|-----|
 | `/lidar/points` | Gazebo `gpu_lidar` → velodyne bridge | m20_bridge (rsdriver rename) |
 | `/imu`          | Gazebo IMU sensor → bridge | restamp `/IMU_YESENSE` |
-| `/odom`         | **rf2o** scan-matching (sim-only node) | restamp `/LIO_ODOM` (onboard LIO) |
+| `/odom`         | **rf2o** scan-matching from `/scan` | **rf2o** scan-matching from `/scan` (same node — the onboard `/LIO_ODOM` is deliberately not used) |
 | `/joint_states` + `/robot_description` + TF | Gazebo joint bridge + RSP + static TFs | m20_bridge |
 | `/cmd_vel` consumer | `m20_cmd_vel_bridge` → `/M20/cmd_vel` → `rl_deploy` RL policy → Gazebo joints | m20_bridge → UDP Cmd 21 → firmware |
 | clock | Gazebo `/clock` (`use_sim_time:=true`) | GOS wall clock (bridge restamps) |
@@ -382,7 +382,7 @@ publishing.
 - `ros2 topic echo /m20/telemetry` shows MotionState/HES/Gait/Version; `/robot/ready` publishes.
 
 ### T3 — joints + TF + localization (shadow; joystick drives, no autonomy)
-- `ros2 topic echo /joint_states` — 16 joints; RViz robot model matches the real pose (legs NOT out of phase → confirms the `LeftFront→fl` MotorStatus mapping; if a limb is wrong, fix `LEG_JOINTS` in `m20_udp_node.py`).
+- `ros2 topic echo /joint_states` — 16 joints with position, velocity AND torque, sourced from `/JOINTS_DATA` by `m20_joints_node.py`. RViz's robot model must stand in the same posture as the real robot. If it renders inverted or splayed, the vendor→URDF conversion is wrong, not the transport: that node applies `q_urdf = wrap(q_vendor * JOINT_DIR + POS_OFFSET_RAD)`, the exact inverse of `gazebo_controller_ros2.py:342`. Both tables must stay in step with that file.
 - Ground-plane check: in RViz the `/lidar/points` floor is flat at z≈0 → validates the `base_link→lidar_link` static TF (0.32028, 0, −0.013). Adjust the static TF (and re-derive GLIM `T_lidar_imu`) if the floor tilts or floats.
 - Start nav_core; drive the robot with the handheld controller. AMCL should hold localization while walking (watch for the hemispherical-lidar near-field blind ring vs `range_min 0.9`, and body pitch swinging the p2l height band). No `/cmd_vel` is sent — nav_core is observed only.
 

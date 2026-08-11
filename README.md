@@ -43,7 +43,15 @@ colcon build --cmake-args -DBUILD_PLATFORM=x86
 
 ### Setup SWAGGER 
 - A python package that generates sparse waypoint graphs from occupancy grid maps for route planning.
-- Follow the [README](src/SWAGGER/README.md) to setup a separate conda env and install dependencies
+- **No conda needed.** SWAGGER is installed into an isolated venv at `/root/swagger-venv` by
+  [.devcontainer/post-create.sh](.devcontainer/post-create.sh) when the dev container is created. Activate it in
+  any shell with the `swagger-env` alias (or `source /root/swagger-venv/bin/activate`).
+- The venv is deliberate, not cosmetic: SWAGGER pins `numpy<2` and pulls CUDA wheels (`cucim-cu12`, `cupy-cuda12x`),
+  which would break the system Python that ROS 2 uses.
+- It is a **workstation-only, offline** tool — the robot/GOS deploy image ([Dockerfile.deploy](Dockerfile.deploy))
+  installs only what the runtime needs to *read* a graph (`networkx`, `PyYAML`, `pyprojroot`). Generate maps and
+  graphs on the workstation, then copy the artifacts to `~/maps` on the robot (mounted at `/root/ros_ws/maps`).
+- To set it up outside the dev container, follow the upstream [README](src/src/SWAGGER/README.md) (needs CUDA 12.5+).
 
 ### Usage - SLAM using GLIM
 
@@ -104,19 +112,25 @@ keyboard controls :
 
 ```bash
 #convert .ply to 2D occupancy costmap
-python src/M20_sdk_deploy/scripts/ply_to_2d_map.py ply /path/to/.ply -o /path/to/output_dir --z-min 0.1 --z-max 10
+python3 src/M20_sdk_deploy/scripts/ply_to_2d_map.py /path/to/map.ply -o /path/to/output_dir --z-min 0.1 --z-max 10
 
 #z_min and z_max are min and max height for obstacle slice (in m)
 ```
 > - the above script should generate a .pgm and a .yaml file
 
 ```bash
-#generate a sparse waypoint graph using the 2d costmap
-cd src/SWAGGER
-conda activate swagger
-python3 scripts/generate_graph.py --map-path path/to/.pgm --resolution 0.05 --x_offset -15.3753 --y_offset -28.6156 --safety_distance 0.5 --output_dir /path/to/maps --occupancy_threshold 50
+#generate a sparse waypoint graph using the 2d costmap (workstation dev container)
+cd src/src/SWAGGER
+swagger-env          # = source /root/swagger-venv/bin/activate
+python3 scripts/generate_graph.py --map-path path/to/.pgm --resolution 0.05 --safety_distance 0.5 --output_dir /path/to/maps --occupancy_threshold 50
 ```
-pls refer to the SWAGGER [README](src/SWAGGER/README.md) to understand more about the arguments usage
+pls refer to the SWAGGER [README](src/src/SWAGGER/README.md) to understand more about the arguments usage
+
+> **Leave `--x_offset`/`--y_offset` at 0.** SWAGGER already adds `image_height * resolution` to y internally
+> ([waypoint_graph_generator.py:166](src/src/SWAGGER/swagger/waypoint_graph_generator.py#L166)), so its output sits in
+> the map-image frame with ROS y-up and the bottom-left pixel at (0, 0). `route_server` then adds the `origin:` from
+> the map `.yaml` to every node ([route_server.py:262-271](src/M20_sdk_deploy/scripts/route_server.py#L262-L271)).
+> Passing the map origin to SWAGGER as well double-applies it and the graph lands one map-width away from the robot.
 
 In separate terminals run the following : 
 ```bash

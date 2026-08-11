@@ -118,6 +118,11 @@ class M20UdpNode(Node):
         self._deadband = float(p('axis_deadband', 0.0).value)   # normalized
         self._max_norm = float(p('max_norm', 0.6).value)        # hard cap
         self._joint_topic = p('joint_states_topic', '/joint_states').value
+        # False when m20_joints_node owns /joint_states from /JOINTS_DATA, which
+        # is the normal deployment: that topic carries velocity and torque too,
+        # and MotorStatus here has neither. Two publishers on one topic would
+        # fight, and this one's angles are in the raw vendor convention.
+        self._publish_js = bool(p('publish_joint_states', True).value)
         self._cmd_topic = p('cmd_vel_topic', '/cmd_vel').value
         self._set_regular_on_start = bool(p('set_regular_mode_on_start', True).value)
 
@@ -149,7 +154,8 @@ class M20UdpNode(Node):
         self._wheel_last_t = None
 
         # ── ROS interfaces ────────────────────────────────────────────────
-        self._js_pub = self.create_publisher(JointState, self._joint_topic, 10)
+        self._js_pub = (self.create_publisher(JointState, self._joint_topic, 10)
+                        if self._publish_js else None)
         self._telem_pub = self.create_publisher(DiagnosticArray, '/m20/telemetry', 10)
         self._ready_pub = self.create_publisher(Bool, '/robot/ready', 1)
         self.create_subscription(Twist, self._cmd_topic, self._cmd_cb,
@@ -278,23 +284,25 @@ class M20UdpNode(Node):
     def _on_motion_status(self, it):
         now = self.get_clock().now()
         now_s = now.nanoseconds * 1e-9
-        motor = it.get('MotorStatus', {})
-        js = JointState()
-        js.header.stamp = now.to_msg()      # local-clock stamp (bridge guarantee)
-        dt = 0.0 if self._wheel_last_t is None else max(0.0, now_s - self._wheel_last_t)
-        self._wheel_last_t = now_s
-        for jname, key, is_wheel in LEG_JOINTS:
-            val = float(motor.get(key, 0.0))
-            js.name.append(jname)
-            if is_wheel:
-                self._wheel_pos[jname] = math.fmod(
-                    self._wheel_pos[jname] + val * dt, 2.0 * math.pi)
-                js.position.append(self._wheel_pos[jname])
-                js.velocity.append(val)
-            else:
-                js.position.append(val)
-                js.velocity.append(0.0)
-        self._js_pub.publish(js)
+        if self._js_pub is not None:
+            motor = it.get('MotorStatus', {})
+            js = JointState()
+            js.header.stamp = now.to_msg()  # local-clock stamp (bridge guarantee)
+            dt = (0.0 if self._wheel_last_t is None
+                  else max(0.0, now_s - self._wheel_last_t))
+            self._wheel_last_t = now_s
+            for jname, key, is_wheel in LEG_JOINTS:
+                val = float(motor.get(key, 0.0))
+                js.name.append(jname)
+                if is_wheel:
+                    self._wheel_pos[jname] = math.fmod(
+                        self._wheel_pos[jname] + val * dt, 2.0 * math.pi)
+                    js.position.append(self._wheel_pos[jname])
+                    js.velocity.append(val)
+                else:
+                    js.position.append(val)
+                    js.velocity.append(0.0)
+            self._js_pub.publish(js)
 
         ms = it.get('MotionStatus', {})
         self._last_status_t = time.monotonic()

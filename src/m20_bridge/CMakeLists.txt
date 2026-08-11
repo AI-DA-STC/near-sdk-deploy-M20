@@ -13,6 +13,7 @@ find_package(ament_cmake REQUIRED)
 # Python bridge nodes (self-contained; invoked as `ros2 run m20_bridge <file>.py`)
 install(PROGRAMS
   scripts/m20_udp_node.py
+  scripts/m20_joints_node.py
   scripts/rtsp_camera_node.py
   scripts/cdr_uds_relay.py
   DESTINATION lib/${PROJECT_NAME}

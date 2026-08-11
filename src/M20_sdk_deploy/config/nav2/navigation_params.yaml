@@ -93,8 +93,13 @@ route_server:
   ros__parameters:
 
     # ── Graph source ──────────────────────────────────────────────────────────
-    graph_file: "/home/krishna/Workspace/near-sdk-deploy-M20/maps/graph.gml"   # Override via launch argument
-    map_yaml: "/home/krishna/Workspace/near-sdk-deploy-M20/maps/edifice_SLAM_v0_2d.yaml"     # Override via launch argument
+    # navigation.launch.py ALWAYS overrides both of these with the `graph_file`
+    # and `map` launch arguments (defaulting to <project root>/maps/...), so
+    # these values only apply when route_server.py is run standalone. They are
+    # the in-container paths, i.e. the docker-compose maps mount target — do not
+    # put a workstation-specific absolute path here.
+    graph_file: "/root/ros_ws/maps/graph.gml"                  # Override via launch argument
+    map_yaml: "/root/ros_ws/maps/edifice_SLAM_v0_2d.yaml"      # Override via launch argument
     frame_id: "map"
     base_frame: "base_link"
 

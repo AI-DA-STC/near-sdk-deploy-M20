@@ -3,6 +3,13 @@
 #   docker compose up                 # both containers
 #   docker compose up m20_bridge      # bridge only (e.g. for the T1-T3 tests)
 #   ENABLE_TX=true docker compose up   # arm the Cmd-21 actuation path (after T4-T6)
+#   MAP=my_site_2d.yaml docker compose up nav_core   # pick a different map
+#   MAPS_DIR=/data/maps docker compose up nav_core   # maps live somewhere else
+#
+# /home/user/maps on the GOS host must hold the offline artefacts: <map>.pgm,
+# <map>.yaml and graph.gml (see the "autonomous waypoint navigation" section of
+# the README). Every /root/ros_ws/... path below is INSIDE the container — the
+# image builds the workspace there — and is unrelated to the host's /home/user.
 # =============================================================================
 services:
   m20_bridge:
@@ -38,9 +45,64 @@ services:
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/ros_ws/config/cyclonedds_gos.xml
     volumes:
-      # maps + SWAGGER graph produced by the GLIM offline pipeline (host ~/maps)
-      - ${HOME}/maps:/root/ros_ws/maps
+      # maps + SWAGGER graph produced by the GLIM offline pipeline.
+      # LEFT of the colon = host (GOS) path; RIGHT = path inside the container.
+      # Do NOT use ${HOME} here: on the GOS you run compose as root from
+      # /home/user, so ${HOME} is /root — compose would then silently create an
+      # empty /root/maps and mount that, and route_server dies on a missing
+      # graph.gml. Override with MAPS_DIR=/some/other/dir if needed.
+      - ${MAPS_DIR:-/home/user/maps}:/root/ros_ws/maps
       - ./config/cyclonedds_gos.xml:/root/ros_ws/config/cyclonedds_gos.xml:ro
+    # MAP names the map YAML inside the maps dir. This path is the CONTAINER-side
+    # mount target above (/root/ros_ws/maps) — never the host's /home/user/maps.
+    # graph_file is not passed: it defaults to <project root>/maps/graph.gml,
+    # which resolves to /root/ros_ws/maps/graph.gml in this image.
     command: >
       ros2 launch rl_deploy navigation.launch.py sim:=false
+      map:=/root/ros_ws/maps/${MAP:-ST_hanger_2d.yaml}
     restart: unless-stopped
+
+  # ===========================================================================
+  # On-robot RViz over an `ssh -Y` X tunnel. The image already carries rviz2 for
+  # exactly this (see Dockerfile.deploy) — this service is only the X plumbing.
+  #
+  #   ./scripts/xauth_for_docker.sh     # once per ssh session; writes the cookie
+  #   docker compose run --rm rviz
+  #
+  # `profiles` keeps it out of `docker compose up`, so it never starts alongside
+  # the nav containers and never gets restarted by the daemon.
+  #
+  # PREFER RViz ON THE WORKSTATION. Forwarding a point-cloud GUI over ssh is
+  # slow, and cyclonedds_gos.xml already provides for the remote case: it binds
+  # 10.21.31.104 alongside lo and finds the laptop via SPDP multicast. Read its
+  # MaxMessageSize caveat first — 65500 B datagrams IP-fragment ~45 ways across a
+  # 1500-MTU link, which mainly bites remote CLOUD viz, not the nav topics.
+  # ===========================================================================
+  rviz:
+    image: m20-deploy:humble
+    container_name: rviz
+    network_mode: host
+    ipc: host
+    profiles: ["viz"]
+    environment:
+      # RViz MUST match the nav containers' RMW or it discovers nothing.
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=file:///root/ros_ws/config/cyclonedds_gos.xml
+      # ssh -Y gives DISPLAY=localhost:10.0 — a TCP display on the robot's
+      # loopback, reachable here only because network_mode is host. The :? makes
+      # a missing DISPLAY a clear compose error instead of a Qt xcb crash.
+      - DISPLAY=${DISPLAY:?empty DISPLAY — run inside an `ssh -Y` session, and see scripts/xauth_for_docker.sh}
+      - XAUTHORITY=/tmp/.docker.xauth
+      # MIT-SHM is pointless over a TCP display and crashes some Qt builds.
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - ./config/cyclonedds_gos.xml:/root/ros_ws/config/cyclonedds_gos.xml:ro
+      - ./custom_nav2.rviz:/root/ros_ws/custom_nav2.rviz:ro
+      # Wildcard-family cookie built by scripts/xauth_for_docker.sh. Run that
+      # script FIRST: if this path is missing, Docker silently creates it as an
+      # empty directory and RViz fails auth with a misleading error.
+      - /tmp/.docker.xauth:/tmp/.docker.xauth:ro
+      # Only needed for a display physically attached to the robot (DISPLAY=:0);
+      # unused by the ssh -Y path, which is TCP.
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    command: rviz2 -d /root/ros_ws/custom_nav2.rviz

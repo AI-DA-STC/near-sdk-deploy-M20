@@ -6,8 +6,10 @@ Runs on the GOS host (10.21.31.104), typically in its own container with
 --network=host --ipc=host. Supplies nav_core's generic contract and converts
 its /cmd_vel back to the robot:
 
-  m20_udp_node    UDP Inspection Protocol <-> /joint_states, /m20/telemetry,
-                  /robot/ready, and (when enable_tx) /cmd_vel -> axis commands
+  m20_udp_node    UDP Inspection Protocol <-> /m20/telemetry, /robot/ready,
+                  and (when enable_tx) /cmd_vel -> axis commands
+  m20_joints_node /JOINTS_DATA (drdds) -> /joint_states  [Fast-DDS process]
+  joints_uds_*    that JointState -> unix socket -> CycloneDDS
   imu_uds_source  /IMU -> unix socket   [Fast-DDS process — see below]
   imu_uds_sink    unix socket -> /IMU_fastdds
   restamp_imu     /IMU_fastdds  -> /imu   (offset: preserve 200Hz dt)
@@ -44,6 +46,14 @@ scripts/test_humble_ingest.sh to re-measure the table above at any time.
 
 Set imu_via_fastdds:=false to drop the hop and subscribe /IMU directly on the
 container's own RMW — correct only if that RMW can actually see /IMU.
+
+/JOINTS_DATA takes the same treatment (joints_via_fastdds), because it comes
+from the same Foxy control stack as /IMU. It replaces the UDP MotorStatus path
+for joint states: same 16 motors, but at the control rate and with velocity and
+torque, and m20_joints_node converts the vendor's raw motor angles into the
+URDF's joint convention on the way through. Without that conversion the URDF
+renders inverted — see the node's docstring for the calibration and its
+provenance.
 
 (Do NOT try to solve this with a CycloneDDS relay in a Foxy container: Cyclone
 0.7, which is what Foxy ships, SEGFAULTS in rmw_create_node as soon as it
@@ -99,6 +109,10 @@ def generate_launch_description():
     imu_bridge_topic = LaunchConfiguration("imu_bridge_topic")
     imu_socket = LaunchConfiguration("imu_socket")
     fastdds_profile = LaunchConfiguration("fastdds_profile")
+    joints_topic = LaunchConfiguration("joints_topic")
+    joints_via_fastdds = LaunchConfiguration("joints_via_fastdds")
+    joints_bridge_topic = LaunchConfiguration("joints_bridge_topic")
+    joints_socket = LaunchConfiguration("joints_socket")
 
     args = [
         DeclareLaunchArgument(
@@ -154,13 +168,92 @@ def generate_launch_description():
             default_value="/root/ros_ws/config/fastdds_profile_gos.xml",
             description="UDP-only Fast-DDS profile for the /IMU sidecar — the "
                         "configuration measured to deliver /IMU at 200 Hz"),
+        # --- joint states from the control stack's native topic --------------
+        DeclareLaunchArgument(
+            "joints_topic", default_value="/JOINTS_DATA",
+            description="drdds/JointsData source — the M20's own publisher. "
+                        "Carries position, velocity AND torque for all 16 "
+                        "motors at the control rate; the UDP 1002/4 MotorStatus "
+                        "path it replaces had position only."),
+        DeclareLaunchArgument(
+            "joints_via_fastdds", default_value="true",
+            description="Read /JOINTS_DATA in a Fast-DDS sidecar and hop it to "
+                        "CycloneDDS over a Unix socket, exactly as /IMU. "
+                        "Default true because /JOINTS_DATA comes from the same "
+                        "Foxy control stack as /IMU; /LIDAR/POINTS is the "
+                        "outlier. Verify with scripts/test_humble_ingest.sh and "
+                        "set false if CycloneDDS can see it directly."),
+        DeclareLaunchArgument(
+            "joints_bridge_topic", default_value="/joint_states_fastdds",
+            description="internal Fast-DDS topic m20_joints_node publishes onto "
+                        "when hopping; the relay carries it to /joint_states"),
+        DeclareLaunchArgument(
+            "joints_socket", default_value="/tmp/m20_joints_cdr.sock",
+            description="Unix datagram socket joining the two RMW processes"),
     ]
 
+    # publish_joint_states:=false — m20_joints_node owns /joint_states now. The
+    # UDP node keeps telemetry, readiness and the Cmd-21 actuation path.
     udp_node = Node(
         package="m20_bridge", executable="m20_udp_node.py",
         name="m20_udp_node", output="screen",
-        parameters=[params, {"enable_tx": enable_tx, "robot_ip": robot_ip}],
+        parameters=[params, {"enable_tx": enable_tx, "robot_ip": robot_ip,
+                             "publish_joint_states": False}],
     )
+
+    # /JOINTS_DATA CROSS-RMW HOP — same shape as the /IMU hop below, and for the
+    # same reason: the control stack publishes over Fast-DDS while this
+    # container runs CycloneDDS for the lidar. The difference is that the
+    # conversion happens BEFORE the socket, so what crosses is an ordinary
+    # sensor_msgs/JointState the generic relay already knows how to carry.
+    #
+    #   m20_joints_node [Fast-DDS] /JOINTS_DATA -> /joint_states_fastdds
+    #   joints_uds_source [Fast-DDS]            -> unix socket
+    #   joints_uds_sink [CycloneDDS]  socket    -> /joint_states
+    _fastdds_env = {
+        "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp",
+        "FASTRTPS_DEFAULT_PROFILES_FILE": fastdds_profile,
+        "CYCLONEDDS_URI": "",
+    }
+
+    joints_node = Node(
+        package="m20_bridge", executable="m20_joints_node.py",
+        name="m20_joints_node", output="screen",
+        condition=IfCondition(joints_via_fastdds),
+        additional_env=_fastdds_env,
+        parameters=[{"joints_topic": joints_topic,
+                     "output_topic": joints_bridge_topic,
+                     "reliability": sensor_reliability}])
+
+    joints_source = Node(
+        package="m20_bridge", executable="cdr_uds_relay.py",
+        name="joints_uds_source", output="screen",
+        condition=IfCondition(joints_via_fastdds),
+        additional_env=_fastdds_env,
+        parameters=[{
+            "role": "source", "msg_type": "jointstate",
+            "topic": joints_bridge_topic, "socket_path": joints_socket,
+            "reliability": sensor_reliability,
+            "depth": 20, "stats_period": 10.0}])
+
+    joints_sink = Node(
+        package="m20_bridge", executable="cdr_uds_relay.py",
+        name="joints_uds_sink", output="screen",
+        condition=IfCondition(joints_via_fastdds),
+        parameters=[{
+            "role": "sink", "msg_type": "jointstate",
+            "topic": "/joint_states", "socket_path": joints_socket,
+            "reliability": "reliable",
+            "depth": 20, "stats_period": 10.0}])
+
+    # No hop: /JOINTS_DATA is readable on the container's own RMW.
+    joints_node_direct = Node(
+        package="m20_bridge", executable="m20_joints_node.py",
+        name="m20_joints_node", output="screen",
+        condition=UnlessCondition(joints_via_fastdds),
+        parameters=[{"joints_topic": joints_topic,
+                     "output_topic": "/joint_states",
+                     "reliability": sensor_reliability}])
 
     # /IMU CROSS-RMW HOP. Two processes, different RMWs, joined by a Unix socket
     # because RMW_IMPLEMENTATION is per-process and each middleware can only see
@@ -257,6 +350,8 @@ def generate_launch_description():
 
     return LaunchDescription(args + [
         udp_node,
+        # the /JOINTS_DATA hop: convert in Fast-DDS, then relay to CycloneDDS
+        joints_node, joints_source, joints_sink, joints_node_direct,
         # the /IMU hop: Fast-DDS source -> unix socket -> CycloneDDS sink
         imu_source, imu_sink,
         restamp_imu, restamp_imu_direct,

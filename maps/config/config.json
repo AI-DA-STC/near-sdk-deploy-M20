@@ -3,11 +3,15 @@
     "config_global_mapping": "config_global_mapping_cpu.json",
     "config_logging": "config_logging.json",
     "config_odometry": "config_odometry_cpu.json",
-    "config_path": "/home/krishna/Workspace/near-sdk-deploy-M20/src/M20_sdk_deploy/config/glim/M20_A",
+    "config_path": "/root/ros_ws/maps/config",
     "config_preprocess": "config_preprocess.json",
     "config_ros": "config_ros.json",
     "config_sensors": "config_sensors.json",
     "config_sub_mapping": "config_sub_mapping_cpu.json",
     "config_viewer": "config_viewer.json"
+  },
+  "meta": {
+    "imu_frame_id": "imu_link",
+    "lidar_frame_id": "lidar_link"
   }
 }

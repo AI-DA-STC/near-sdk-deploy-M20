@@ -57,6 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cudart-12-6 \
         libgtsam-points-cuda12.6-dev \
         ros-humble-glim-ros-cuda12.6 \
+        zenity \
     && rm -rf /var/lib/apt/lists/* \
     && ldconfig
 # -----------------------------------------------------------------------------

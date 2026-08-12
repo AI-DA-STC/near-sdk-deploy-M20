@@ -171,4 +171,30 @@ To take over control
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
+#run rviz2 inside 104
 
+sudo rm -rf /tmp/.docker.xauth && touch /tmp/.docker.xauth
+xauth nlist $DISPLAY | sed -e 's/^..../ffff/' | xauth -f /tmp/.docker.xauth nmerge -
+xauth -f /tmp/.docker.xauth list
+
+
+docker run --rm -it --network host --ipc host   -e DISPLAY=$DISPLAY   -e XAUTHORITY=/tmp/.docker.xauth   -e QT_X11_NO_MITSHM=1   -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp   -e CYCLONEDDS_URI=file:///root/ros_ws/config/cyclonedds_gos.xml   -v /tmp/.docker.xauth:/tmp/.docker.xauth:ro   -v $PWD/config/cyclonedds_gos.xml:/root/ros_ws/config/cyclonedds_gos.xml:ro   -v $PWD/custom_nav2.rviz:/root/ros_ws/custom_nav2.rviz:ro   m20-deploy:humble rviz2 -d /root/ros_ws/custom_nav2.rviz
+
+#to manually change nav params on container in robot during finetuning 
+```bash
+# 1. out
+docker cp nav_core:/root/ros_ws/install/rl_deploy/share/rl_deploy/config/nav2/navigation_params.yaml \
+  ./navigation_params.yaml
+
+# 2. edit ./navigation_params.yaml
+
+# 3. back in
+docker cp ./navigation_params.yaml \
+  nav_core:/root/ros_ws/install/rl_deploy/share/rl_deploy/config/nav2/navigation_params.yaml
+
+# 4. reload — restart, do NOT recreate
+docker compose restart nav_core
+
+# 5. measure
+docker exec nav_core bash -c 'source /root/ros_ws/install/setup.bash && ros2 topic hz /cmd_vel'
+```

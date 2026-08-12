@@ -127,7 +127,7 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner/SmacPlanner2D"
-      tolerance: 0.5                    # goal tolerance in costmap cells
+      tolerance: 1.0                    # goal tolerance in costmap cells
       allow_unknown: true               # allow planning through unknown space
       max_iterations: 1000000           # practically unlimited
       max_on_approach_iterations: 1000
@@ -152,11 +152,11 @@ smoother_server:
 controller_server:
   ros__parameters:
     use_sim_time: true
-    controller_frequency: 20.0
+    controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    failure_tolerance: 1.0
     odom_topic: "/odometry/filtered"
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
@@ -168,11 +168,10 @@ controller_server:
       movement_time_allowance: 15.0
 
     goal_checker:
-      plugin: "nav2_controller::StoppedGoalChecker"
-      trans_stopped_velocity: 0.1
-      rot_stopped_velocity: 0.1
-      xy_goal_tolerance: 0.4
-      yaw_goal_tolerance: 0.5
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: true
+      xy_goal_tolerance: 0.3
+      yaw_goal_tolerance: 0.2
 
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
@@ -195,18 +194,17 @@ controller_server:
       decel_lim_y: -0.5
       decel_lim_theta: -3.0
 
-      # ── Trajectory simulation ──
-      sim_time: 2.0
-      vx_samples: 30
-      vy_samples: 20
-      vtheta_samples: 30
-      transform_tolerance: 0.5
+      sim_time: 1.5
+      vx_samples: 8
+      vy_samples: 5
+      vtheta_samples: 12
+      transform_tolerance: 0.8
       short_circuit_trajectory_evaluation: true
 
       # ── Trajectory generation ──
       trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
       sim_granularity: 0.05
-      angular_sim_granularity: 0.025
+      angular_sim_granularity: 0.25
 
       # ── Path pruning ──
       prune_distance: 1.0
@@ -249,7 +247,7 @@ local_costmap:
       resolution: 0.05
       update_frequency: 10.0
       publish_frequency: 4.0
-      transform_tolerance: 0.5
+      transform_tolerance: 0.8
       footprint: "[[-0.41, -0.2], [-0.41, 0.2], [0.41, 0.2], [0.41, -0.2]]"
       plugins: ["obstacle_layer", "inflation_layer"]
 
@@ -270,8 +268,8 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.45
-        cost_scaling_factor: 2.5
+        inflation_radius: 0.1
+        cost_scaling_factor: 1.0
 
       always_send_full_costmap: true
 
@@ -285,7 +283,7 @@ global_costmap:
       track_unknown_space: true
       update_frequency: 1.0
       publish_frequency: 1.0
-      transform_tolerance: 0.5
+      transform_tolerance: 0.8
       footprint: "[[-0.41, -0.3], [-0.41, 0.3], [0.41, 0.3], [0.41, -0.3]]"
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
@@ -310,10 +308,10 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.7
-        cost_scaling_factor: 2.0
+        inflation_radius: 0.1
+        cost_scaling_factor: 1.0
 
-      always_send_full_costmap: true
+      always_send_full_costmap: false
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BEHAVIOR SERVER (recovery behaviors — BackUp)

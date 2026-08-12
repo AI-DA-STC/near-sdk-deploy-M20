@@ -31,9 +31,27 @@
     <Discovery>
       <Peers>
         <!-- Every participant in the nav path is on this host; name it
-             explicitly so discovery never depends on lo multicast working.
-             The laptop is found via SPDP multicast on the NIC above. -->
+             explicitly so discovery never depends on lo multicast working. -->
         <Peer address="localhost"/>
+
+        <!-- REMOTE RVIZ. The laptop is NOT found by SPDP multicast whenever it
+             reaches us through the AOS (wifi 192.168.8.x -> AOS -> internal
+             switch): multicast does not cross that router hop, so without a
+             unicast peer here the announcement never leaves this subnet.
+
+             Strictly, one side naming the other is enough — RViz's own SPDP
+             carries its locators, so a participant that RECEIVES it can reply.
+             This entry makes discovery symmetric instead, so it does not depend
+             on which side happens to speak first, and so a restarted container
+             re-announces to RViz rather than waiting to be probed.
+
+             Set to the laptop's wifi address; it is DHCP and has already changed
+             once (.236 -> .160), so prefer a static lease. An unreachable or
+             stale address here costs only a few wasted SPDP datagrams, never a
+             startup failure — but it also silently buys nothing, so keep it in
+             step with cyclonedds_laptop.xml's <Interfaces>.
+             Leave BOTH files' peers in place; see scripts/check_remote_viz.sh. -->
+        <Peer address="192.168.8.160"/>
       </Peers>
 
       <!-- REQUIRED, DO NOT DROP. Unicast discovery needs each participant to

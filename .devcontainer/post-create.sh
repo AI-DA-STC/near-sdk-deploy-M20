@@ -22,9 +22,8 @@ if [ -d "$SWAGGER_DIR" ]; then
   python3 -m venv /root/swagger-venv
   # Long timeout + retries: the CUDA wheels are large and the mirror is flaky.
   /root/swagger-venv/bin/pip install --upgrade --default-timeout=1000 --retries 5 pip
+  /root/swagger-venv/bin/pip install --default-timeout=1000 --retries 5 pyyaml
   /root/swagger-venv/bin/pip install --default-timeout=1000 --retries 5 -e "$SWAGGER_DIR"
-  
-  # Convenience: activate the SWAGGER venv with `swagger-env` in any shell.
   grep -q 'alias swagger-env' /root/.bashrc || \
     echo "alias swagger-env='source /root/swagger-venv/bin/activate'" >> /root/.bashrc
 else

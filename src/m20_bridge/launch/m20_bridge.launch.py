@@ -13,6 +13,8 @@ its /cmd_vel back to the robot:
   imu_uds_source  /IMU -> unix socket   [Fast-DDS process — see below]
   imu_uds_sink    unix socket -> /IMU_fastdds
   restamp_imu     /IMU_fastdds  -> /imu   (offset: preserve 200Hz dt)
+  odom_uds_*      /ODOM -> unix socket -> /ODOM_fastdds  [Fast-DDS process]
+  restamp_odom    /ODOM_fastdds -> /odom (offset: preserve sample spacing)
   restamp_lidar   /LIDAR/POINTS -> /lidar/points (offset)
   rtsp_camera1/2  RTSP video1/2 (AOS :8554) -> /camera1, /camera2
   static TF       base_link -> lidar_link
@@ -55,6 +57,20 @@ URDF's joint convention on the way through. Without that conversion the URDF
 renders inverted — see the node's docstring for the calibration and its
 provenance.
 
+/ODOM gets the same treatment (odom_via_fastdds), because it is the onboard
+state estimator's output (joint encoders + foot contact + IMU fusion) and
+comes from that same Foxy control stack, not the lidar side. It is nav_core's
+/odom: EKF fuses it (with absolute yaw trusted — see navigation.launch.py's
+ekf_node_robot) instead of scan-matching one from /scan with rf2o, which was
+the previous approach and had no absolute heading reference to correct
+dead-reckoned yaw drift. THIS TOPIC WAS RENAMED BY THE VENDOR: it shipped as
+/LIO_ODOM and is /ODOM as of the firmware on this robot as of 2026-08-11 (see
+the OTA-rename risk this file's DEPLOYMENT.md entry already calls out) — re-run
+`ros2 topic info -v /ODOM` after any OTA and update odom_topic below if it
+moves again. Also note the vendor stamps header.frame_id="map" and leaves
+child_frame_id empty on this message; restamp_odom overrides both to this
+stack's odom/base_link naming — do not drop that override.
+
 (Do NOT try to solve this with a CycloneDDS relay in a Foxy container: Cyclone
 0.7, which is what Foxy ships, SEGFAULTS in rmw_create_node as soon as it
 exchanges discovery with this robot's Fast-DDS participants. Configs that avoid
@@ -62,10 +78,10 @@ those participants survive but then receive nothing, because those participants
 are the publishers. That approach was built, measured, and removed.)
 
 Stamps arriving here carry the ROBOT's clock, so this file remains the single
-place clock differences are corrected. Both restamps use 'offset' to rebase onto
-the GOS clock while PRESERVING inter-sample dt; 'arrival' would collapse it,
-which hurts the LIO. /LIO_ODOM is dropped: the GOS-side LIO produces odometry
-locally.
+place clock differences are corrected. All three hopped restamps use 'offset'
+to rebase onto the GOS clock while PRESERVING inter-sample dt; 'arrival' would
+collapse it, which hurts the LIO (and would turn /odom's velocity fields to
+noise).
 
 restamp reliability matches the M20's publishers, which are RELIABLE. A mismatch
 would silently match nothing, so restamp_relay logs a loud INCOMPATIBLE-QoS
@@ -113,6 +129,10 @@ def generate_launch_description():
     joints_via_fastdds = LaunchConfiguration("joints_via_fastdds")
     joints_bridge_topic = LaunchConfiguration("joints_bridge_topic")
     joints_socket = LaunchConfiguration("joints_socket")
+    odom_topic = LaunchConfiguration("odom_topic")
+    odom_via_fastdds = LaunchConfiguration("odom_via_fastdds")
+    odom_bridge_topic = LaunchConfiguration("odom_bridge_topic")
+    odom_socket = LaunchConfiguration("odom_socket")
 
     args = [
         DeclareLaunchArgument(
@@ -189,6 +209,29 @@ def generate_launch_description():
                         "when hopping; the relay carries it to /joint_states"),
         DeclareLaunchArgument(
             "joints_socket", default_value="/tmp/m20_joints_cdr.sock",
+            description="Unix datagram socket joining the two RMW processes"),
+        # --- onboard state estimator (joint encoders + foot contact + IMU) ---
+        DeclareLaunchArgument(
+            "odom_topic", default_value="/ODOM",
+            description="Onboard fused-odometry source — the M20's own "
+                        "publisher (nav_msgs/Odometry). Shipped as /LIO_ODOM "
+                        "on earlier firmware and renamed to /ODOM by an OTA "
+                        "update (confirmed via `ros2 topic info -v /ODOM` on "
+                        "2026-08-11); re-check after any future OTA."),
+        DeclareLaunchArgument(
+            "odom_via_fastdds", default_value="true",
+            description="Read /ODOM in a Fast-DDS sidecar and hop it to "
+                        "CycloneDDS over a Unix socket, exactly as /IMU. "
+                        "Default true because /ODOM comes from the same Foxy "
+                        "control stack as /IMU and /JOINTS_DATA; /LIDAR/POINTS "
+                        "is the outlier. Verify with scripts/test_humble_ingest.sh "
+                        "and set false if CycloneDDS can see it directly."),
+        DeclareLaunchArgument(
+            "odom_bridge_topic", default_value="/ODOM_fastdds",
+            description="internal CycloneDDS topic the hop's sink republishes "
+                        "onto; restamp_odom consumes this when odom_via_fastdds"),
+        DeclareLaunchArgument(
+            "odom_socket", default_value="/tmp/m20_odom_cdr.sock",
             description="Unix datagram socket joining the two RMW processes"),
     ]
 
@@ -303,6 +346,53 @@ def generate_launch_description():
             "output_topic": "/imu", "frame_id": "imu_link",
             "mode": "offset", "reliability": sensor_reliability}])
 
+    # /ODOM CROSS-RMW HOP — same shape as the /IMU hop above, and for the same
+    # reason: the onboard state estimator (joint encoders + foot contact + IMU)
+    # publishes over Fast-DDS from the same Foxy control stack as /IMU.
+    #
+    #   odom_uds_source [Fast-DDS]   /ODOM  --raw CDR-->  unix socket
+    #   odom_uds_sink   [CycloneDDS] socket --raw CDR-->  /ODOM_fastdds
+    #   restamp_odom    [CycloneDDS] /ODOM_fastdds -> /odom
+    odom_source = Node(
+        package="m20_bridge", executable="cdr_uds_relay.py",
+        name="odom_uds_source", output="screen",
+        condition=IfCondition(odom_via_fastdds),
+        additional_env=_fastdds_env,
+        parameters=[{
+            "role": "source", "msg_type": "odometry", "topic": odom_topic,
+            "socket_path": odom_socket, "reliability": sensor_reliability,
+            "depth": 20, "stats_period": 10.0}])
+
+    odom_sink = Node(
+        package="m20_bridge", executable="cdr_uds_relay.py",
+        name="odom_uds_sink", output="screen",
+        condition=IfCondition(odom_via_fastdds),
+        parameters=[{
+            "role": "sink", "msg_type": "odometry", "topic": odom_bridge_topic,
+            "socket_path": odom_socket, "reliability": "reliable",
+            "depth": 20, "stats_period": 10.0}])
+
+    # restamp_odom overrides frame_id/child_frame_id: the vendor message stamps
+    # header.frame_id="map" (ITS OWN absolute reference, unrelated to this
+    # stack's map frame from AMCL/the static map) and leaves child_frame_id
+    # empty. Both are rewritten to this stack's odom -> base_link naming so
+    # downstream (ekf_node's odom0) sees a normal odom message.
+    restamp_odom = Node(
+        package="rl_deploy", executable="restamp_relay.py", name="restamp_odom",
+        output="screen", condition=IfCondition(odom_via_fastdds), parameters=[{
+            "msg_type": "odometry", "input_topic": odom_bridge_topic,
+            "output_topic": "/odom", "frame_id": "odom",
+            "child_frame_id": "base_link", "mode": "offset",
+            "reliability": "reliable"}])
+
+    restamp_odom_direct = Node(
+        package="rl_deploy", executable="restamp_relay.py", name="restamp_odom",
+        output="screen", condition=UnlessCondition(odom_via_fastdds), parameters=[{
+            "msg_type": "odometry", "input_topic": odom_topic,
+            "output_topic": "/odom", "frame_id": "odom",
+            "child_frame_id": "base_link", "mode": "offset",
+            "reliability": sensor_reliability}])
+
     # /LIDAR/POINTS carries the ROBOT's clock, not this host's — use 'offset' to
     # rebase onto the GOS clock while preserving the 10 Hz spacing the LIO relies on.
     restamp_lidar = Node(
@@ -355,6 +445,9 @@ def generate_launch_description():
         # the /IMU hop: Fast-DDS source -> unix socket -> CycloneDDS sink
         imu_source, imu_sink,
         restamp_imu, restamp_imu_direct,
+        # the /ODOM hop: Fast-DDS source -> unix socket -> CycloneDDS sink
+        odom_source, odom_sink,
+        restamp_odom, restamp_odom_direct,
         restamp_lidar, restamp_lidar2,
         cam1, cam2,
         static_tf_lidar, rsp,

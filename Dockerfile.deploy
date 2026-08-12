@@ -157,6 +157,18 @@ RUN apt-get update \
         ros-humble-rviz2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Network triage tools (~3 MB). ros-base ships NONE of ip/ping/ss/tcpdump, so
+# without these scripts/check_remote_viz.sh cannot test a single network layer
+# from inside the container and stops at "'ip' not found". Since these containers
+# run network_mode: host, what they measure IS the host's networking — which is
+# what makes in-container triage meaningful rather than a detour.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        iproute2 \
+        iputils-ping \
+        tcpdump \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY config/cyclonedds_gos.xml ./config/cyclonedds_gos.xml
 COPY config/fastdds_profile_gos.xml ./config/fastdds_profile_gos.xml
 RUN touch /root/ros_ws/.here

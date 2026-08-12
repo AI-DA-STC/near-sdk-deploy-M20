@@ -142,7 +142,7 @@ rtree==1.4.1
 scikit-image==0.25.2
 scikit-learn==1.7.2
 scipy==1.15.3
-setuptools==82.0.0
+setuptools>=30.3.0,<80
 shtab==1.8.0
 six==1.17.0
 skan==0.12.3

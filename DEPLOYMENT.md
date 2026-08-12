@@ -12,6 +12,8 @@ AOS 10.21.31.103 (stock, untouched)     ┌ m20_bridge container ─────
                                         │                                    │  │ route_server(graph)→orchestrator│
  GOS-local Foxy/Fast-DDS publishers     │ [Fast-DDS sidecar] /IMU →socket→   │─►│ nav2 → /cmd_vel                 │
   /IMU 200Hz ─────────────────────────► │   /IMU_fastdds → restamp → /imu    │◄─└─────────────────────────────────┘
+  /ODOM (joint+contact+IMU fusion) ───► │ [Fast-DDS sidecar] /ODOM →socket→  │
+   (renamed from /LIO_ODOM by OTA)      │   /ODOM_fastdds → restamp → /odom  │
   /LIDAR/POINTS 10Hz ~1.2MB ──────────► │ [Cyclone] restamp /LIDAR/POINTS    │
    (each needs a DIFFERENT rmw - below) │        → /lidar/points  (offset)   │
                                         │ static TF base_link→lidar_link     │
@@ -51,18 +53,28 @@ container. `/IMU` is the stream that gets hopped, not the cloud, because it is
 0 dropped**, with stamps and field values intact (raw CDR is copied, never
 decoded, and both ends are Humble so the encoding is identical by construction).
 
+`/ODOM` — the onboard state estimator's fused odometry (joint encoders + foot
+contact + IMU), and nav_core's `/odom` source on the robot (§Generic contract
+below) — gets the identical hop (`odom_uds_source`/`odom_uds_sink`/
+`restamp_odom`), on the assumption that it comes from the same Foxy control
+stack as `/IMU` and is therefore Fast-DDS-only too. That assumption is NOT yet
+in the measured table above — confirm it with `TOPIC=/ODOM
+scripts/test_humble_ingest.sh` on the actual robot and set `odom_via_fastdds:=false`
+if CycloneDDS turns out to see it directly.
+
 Reproduce the table any time with `scripts/test_humble_ingest.sh`, which takes a
 `TOPIC` override:
 
 ```bash
 bash scripts/test_humble_ingest.sh              # /LIDAR/POINTS
 TOPIC=/IMU bash scripts/test_humble_ingest.sh   # /IMU
+TOPIC=/ODOM bash scripts/test_humble_ingest.sh  # /ODOM
 ```
 
 **Do not "simplify" this onto one RMW** — whichever you choose, one sensor goes
-silent and the LIO dies. `imu_via_fastdds:=false` drops the hop and subscribes
-`/IMU` directly on the container's own RMW; correct only on a robot where that
-RMW can actually see it.
+silent and the LIO dies. `imu_via_fastdds:=false` / `odom_via_fastdds:=false`
+drop the hop and subscribe directly on the container's own RMW; correct only
+on a robot where that RMW can actually see the topic.
 
 Because a process gets one RMW, `nav_core` must match `m20_bridge`'s primary
 (CycloneDDS). Nothing else is affected — the AOS link is raw UDP and the cameras
@@ -97,7 +109,7 @@ writing a new `<robot>_bridge` package + launch; nav_core is untouched):
 |-----|-------|------|-------------|
 | IN  | `/lidar/points` | PointCloud2 | bridge (restamp `/LIDAR/POINTS`) |
 | IN  | `/imu`   | Imu      | bridge (Fast-DDS sidecar → `/IMU_fastdds` → restamp) |
-| IN  | `/odom`  | Odometry | bridge (GOS-side LIO) |
+| IN  | `/odom`  | Odometry | bridge (`/ODOM` — onboard joint-encoder + foot-contact + IMU fusion — Fast-DDS sidecar → `/ODOM_fastdds` → restamp; absolute yaw, fused non-differentially by `ekf_node_robot`) |
 | IN  | `/joint_states` + `/robot_description` + TF `base_link→lidar_link` | | bridge |
 | IN  | `/goal_pose`, `/initialpose` | | laptop RViz |
 | OUT | `/cmd_vel` | Twist | nav_core DWB → bridge → UDP Cmd 21 |
@@ -130,7 +142,7 @@ Gazebo `gpu_lidar`); this laptop's RTX is fine and the devcontainer already pass
 |-----|-----|-----|
 | `/lidar/points` | Gazebo `gpu_lidar` → velodyne bridge | m20_bridge (rsdriver rename) |
 | `/imu`          | Gazebo IMU sensor → bridge | restamp `/IMU_YESENSE` |
-| `/odom`         | **rf2o** scan-matching from `/scan` | **rf2o** scan-matching from `/scan` (same node — the onboard `/LIO_ODOM` is deliberately not used) |
+| `/odom`         | **rf2o** scan-matching from `/scan` (no absolute yaw — `ekf_node_sim` fuses x,y only, IMU carries yaw rate) | onboard `/ODOM` fusion (joint encoders + foot contact + IMU) relayed by m20_bridge — carries absolute yaw, fused non-differentially by `ekf_node_robot` |
 | `/joint_states` + `/robot_description` + TF | Gazebo joint bridge + RSP + static TFs | m20_bridge |
 | `/cmd_vel` consumer | `m20_cmd_vel_bridge` → `/M20/cmd_vel` → `rl_deploy` RL policy → Gazebo joints | m20_bridge → UDP Cmd 21 → firmware |
 | clock | Gazebo `/clock` (`use_sim_time:=true`) | GOS wall clock (bridge restamps) |
@@ -401,6 +413,15 @@ While the robot is moving under `/cmd_vel`:
 - `docker kill m20_bridge` mid-motion; `docker kill nav_core` mid-motion; block port 30000 mid-motion — **record what the firmware does when the 20 Hz stream stops** (this behavior is unverified and load-bearing). Trigger the hardware e-stop; confirm recovery needs `~/reset`.
 
 ### GLIM mapping (before T-nav with a new site; needs only the controller)
+0. **`config/glim/M20_REAL/config_ros.json` now ships with `enable_global_mapping: false`**
+   (it's the config live nav_core also points GLIM at, where loop-closure pose
+   jumps must not happen — see the comment in that file). This offline mapping
+   step is exactly the case that flag's comment calls out as needing loop
+   closure back on: step 2 explicitly asks you to walk loops for closure, and
+   with global mapping off GLIM cannot close them. Flip it to `true` for this
+   session's `glim_slam.launch.py` run and back to `false` before any live
+   nav_core run reuses the same config (or fork a second GLIM config directory
+   for mapping sessions so this stops being a manual step).
 1. Bring up `m20_bridge` (+ ad-hoc nothing — `/imu` and `/lidar/points` already flow). 
 2. Record while walking the site with the controller (loops for closure):
    `ros2 bag record -o m20_site --compression-mode file --compression-format zstd /lidar/points /imu`
@@ -417,4 +438,4 @@ While the robot is moving under `/cmd_vel`:
 - **Firmware behavior on stream/heartbeat loss is unverified** — T6 gates trust; until then treat the bridge as the only software stop besides the e-stop.
 - **App/joystick contention** in Regular mode — disconnect them during autonomy; the node reports permission errors (57351) via telemetry.
 - **Normalized scale is gait/speed-gear dependent** — LUT + startup self-check + `max_norm` cap.
-- **OTA resets stock services and may rename `/IMU_YESENSE` / `/LIO_ODOM`** — T1 re-checks after any firmware update.
+- **OTA resets stock services and may rename topics — already observed once:** `/LIO_ODOM` was renamed to `/ODOM` (confirmed via `ros2 topic info -v /ODOM` on 2026-08-11; `m20_bridge.launch.py`'s `odom_topic` argument tracks this). `/IMU_YESENSE` may similarly move. T1 re-checks both after any firmware update.

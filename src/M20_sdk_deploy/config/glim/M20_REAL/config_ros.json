@@ -13,7 +13,19 @@
   // acc_scale              : Accelerometer scale factor (Set to 9.80665 for Livox sensors)
   //
   // --- TF config ---
-  // GLIM publishes TF subtrees "map -> odom -> base_frame" and "imu -> lidar".
+  // GLIM publishes TF subtrees "map -> odom -> base_frame" and "imu -> lidar"
+  // ONLY via the "librviz_viewer.so" extension module (it owns the
+  // tf2_ros::TransformBroadcaster; no other module publishes TF). That module
+  // is deliberately left OUT of extension_modules below: GLIM here only builds
+  // the static site map (offline, from a bag) or runs read-only alongside live
+  // nav_core, and live nav_core already owns this exact TF subtree via AMCL
+  // (map -> odom) + ekf_node (odom -> base_link). A second publisher of the
+  // same edges fights the first and shows up as the pose periodically
+  // snapping/rotating in place. Do NOT re-add librviz_viewer.so to
+  // extension_modules while GLIM runs alongside AMCL/EKF, or add a remap/TF
+  // rewrite first. With librviz_viewer.so disabled, the fields below are inert
+  // (kept for when the module is deliberately re-enabled, e.g. GLIM run solo
+  // for debugging):
   // imu_frame_id           : IMU frame ID (If blank, auto-detected from IMU topic)
   // lidar_frame_id         : LiDAR frame ID (If blank, auto-detected from points topic)
   // base_frame_id          : Base frame ID. If blank, IMU frame ID is used.
@@ -46,7 +58,14 @@
   "glim_ros": {
     // Backend modules
     "enable_local_mapping": true,
-    "enable_global_mapping": true,
+    // Global mapping runs pose-graph optimization / loop closure, which can
+    // snap GLIM's own internal pose between optimization steps. Fine for the
+    // offline "GLIM mapping" workflow (DEPLOYMENT.md), where those jumps only
+    // rewrite the saved map, but disabled here because this config is also
+    // used when GLIM runs read-only alongside live nav_core, where a snap
+    // would be a visible pose discontinuity. Flip back to true only for a
+    // dedicated offline mapping session (bag playback, no live TF consumers).
+    "enable_global_mapping": false,
     // Points config
     "keep_raw_points": false,
     // IMU config
@@ -65,10 +84,18 @@
     "publish_imu2lidar": true,
     "tf_time_offset": 1e-6,
     // Extension modules
+    // "librviz_viewer.so" is deliberately OMITTED: it is the module that
+    // broadcasts GLIM's "map -> odom -> base_frame" / "imu -> lidar" TF and
+    // republishes odom/pose topics (see the TF config comment above). AMCL +
+    // ekf_node already own that TF subtree during live nav_core operation;
+    // re-add it only for a standalone GLIM debugging session with no other TF
+    // publisher of map->odom/odom->base_link running.
+    // "libstandard_viewer.so" is unaffected — it's a local OpenGL viewer
+    // window (config_viewer.json), not a ROS TF/topic publisher.
     "extension_modules": [
       "libmemory_monitor.so",
-      "libstandard_viewer.so",
-      "librviz_viewer.so"
+      "libstandard_viewer.so"
+      // "librviz_viewer.so"  -- disabled: publishes TF that collides with AMCL/EKF
       // "libimu_validator.so"
     ],
     // Topics (GENERIC contract — same names in sim and on the robot)

@@ -19,26 +19,36 @@ Generic contract:
                                                   clamps + converts to the robot)
 
 Internal pipeline:
-  /lidar/points -> pointcloud_to_laserscan -> /scan -> rf2o -> /odom
-                                                    -> amcl + costmaps
+  /lidar/points -> pointcloud_to_laserscan -> /scan -> amcl + costmaps
+  sim:    /scan -> rf2o -> /odom
+  robot:  m20_bridge's onboard state estimator (/ODOM: joint encoders + foot
+          contact + IMU fusion) -> /odom
   /odom (+/imu) -> ekf -> odom->base_link TF, /odometry/filtered
   /goal_pose    -> route_server (graph) -> linear_orchestrator -> nav2 -> /cmd_vel
 
-ODOMETRY IS rf2o IN BOTH MODES. The robot publishes its own onboard LIO fusion
-on /LIO_ODOM, but the stack deliberately does not consume it: /odom is always
-scan-matched from /scan by rf2o, so sim and robot run the identical localization
-pipeline and the seam stays at the sensor topics. rf2o and ekf_node therefore
-carry no `sim` condition.
+/odom's SOURCE DIFFERS BY MODE, and so does how ekf_node trusts it:
+  sim:=true   rf2o scan-matches /scan into /odom. This has no absolute heading
+              reference, so ekf_node_sim fuses only rf2o (x, y) and lets /imu's
+              yaw RATE carry orientation (per navigation_params.yaml).
+  sim:=false  m20_bridge relays the robot's onboard fused odometry (/ODOM —
+              joint encoders + foot contact + IMU, see its launch file) as
+              /odom. That message carries an absolute, drift-corrected yaw, so
+              ekf_node_robot fuses odom0's x, y AND yaw as absolute pose
+              (odom0_differential: false — see the node below for why leaving
+              this at the yaml's default `true` silently discards that
+              reference and turns yaw back into dead reckoning).
+rf2o therefore runs sim-only; ekf_node is genuinely mode-conditioned, unlike
+every other node in this file.
 
 Modes (sim launch argument): both modes consume the SAME generic topics; `sim`
 only toggles the helper nodes that exist because Gazebo has a clean clock and
 model-scoped sensor frame names instead of a hardware bridge.
   sim:=true  (default) — pair with the Gazebo bringup (gazebo_velodyne.launch.py),
                          which publishes /lidar/points, /imu, /joint_states.
-                         Adds the Gazebo sensor-frame TFs.
+                         Adds rf2o (-> /odom) and the Gazebo sensor-frame TFs.
   sim:=false            — pair with a robot bridge (m20_bridge.launch.py) that
-                         publishes /lidar/points, /imu, /joint_states and the
-                         base_link->lidar_link TF. It does NOT supply /odom.
+                         publishes /lidar/points, /imu, /odom, /joint_states and
+                         the base_link->lidar_link TF.
 """
 
 import os
@@ -47,7 +57,7 @@ from datetime import datetime
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.logging import launch_config
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -182,10 +192,9 @@ def generate_launch_description():
         ],
     )
 
-    # rf2o scan-matching odometry -> /odom. Runs in BOTH modes: /odom has no
-    # other source, and the robot's own /LIO_ODOM is deliberately not used.
-    # rf2o consumes /scan, which pointcloud_to_laserscan produces identically in
-    # sim and on the robot, so this node is genuinely mode-agnostic.
+    # Sim-only: rf2o scan-matching odometry -> /odom. On the robot, m20_bridge
+    # supplies /odom from the onboard state estimator (/ODOM) instead — see
+    # the module docstring.
     #
     # publish_tf: False — odom->base_link belongs to ekf_node alone. A second
     # publisher of that edge would fight it.
@@ -203,17 +212,49 @@ def generate_launch_description():
             "publish_tf": False,
             "freq": 10.0,
         }],
+        condition=IfCondition(sim),
     )
 
     # EKF — publishes odom -> base_link and /odometry/filtered.
-    # Fuses rf2o (x, y) + /imu (yaw rate), per navigation_params.yaml. Identical
-    # in both modes now that rf2o is the /odom source in both: there is no
-    # longer a robot-specific variant that trusted an onboard LIO's absolute yaw.
-    ekf_node = Node(
+    # Sim: fuses rf2o (x, y) + /imu (yaw rate), per navigation_params.yaml —
+    # rf2o has no absolute heading reference, so yaw is IMU-rate-only there.
+    ekf_node_sim = Node(
         package="robot_localization",
         executable="ekf_node",
         name="ekf_node",
         parameters=[params_file, {"use_sim_time": use_sim_time}],
+        condition=IfCondition(sim),
+    )
+
+    # Robot: /odom is the onboard fused (joint encoder + foot contact + IMU)
+    # odometry relayed by m20_bridge, which DOES carry an absolute, drift-free
+    # yaw — so odom0 supplies x, y AND yaw as absolute measurements.
+    #
+    # odom0_differential: False is load-bearing, not cosmetic. The yaml default
+    # (True, tuned for rf2o in sim) differentiates the absolute pose into a
+    # velocity BEFORE fusing it, which throws away exactly the absolute yaw
+    # reference this branch exists to use — degrading back into dead-reckoned
+    # yaw with nothing to snap back to, and double-fusing yaw rate against
+    # imu0's yaw_vel in the process. Leaving this unset here silently
+    # re-inherits the sim-tuned default; it must stay an explicit override.
+    ekf_node_robot = Node(
+        package="robot_localization",
+        executable="ekf_node",
+        name="ekf_node",
+        parameters=[
+            params_file,
+            {
+                "use_sim_time": use_sim_time,
+                "odom0": "/odom",
+                "odom0_config": [True,  True,  False,   # x, y, z
+                                  False, False, True,    # roll, pitch, yaw
+                                  False, False, False,   # vx, vy, vz
+                                  False, False, False,   # roll_vel, pitch_vel, yaw_vel
+                                  False, False, False],  # ax, ay, az
+                "odom0_differential": False,
+            },
+        ],
+        condition=UnlessCondition(sim),
     )
 
     # Map server — serves the 2D occupancy grid
@@ -313,8 +354,9 @@ def generate_launch_description():
             static_tf_gazebo_velodyne,      # sim only
             static_tf_gazebo_imu,           # sim only
             pointcloud_to_laserscan,
-            rf2o_laser_odometry,
-            ekf_node,
+            rf2o_laser_odometry,            # sim only
+            ekf_node_sim,                   # sim only
+            ekf_node_robot,                 # robot only
             map_server,
             amcl,
             # Navigation

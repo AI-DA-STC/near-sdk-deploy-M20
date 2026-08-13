@@ -61,6 +61,43 @@ else
 fi
 
 echo
+echo "== system clock =="
+# WHY: found this host running 21 MONTHS behind the workstation (2024-11 vs
+# 2026-08). phc2sys was copying the NIC's PTP hardware clock into the system
+# clock, and the rslidar was the PTP source — so the LIDAR was setting the
+# robot's date. Every header.stamp the stack produced was in 2024.
+#
+# tf2 tolerates a uniform offset (it compares message stamps to each other), so
+# the robot navigates against itself just fine and the fault hides. What breaks
+# is anything crossing the machine boundary: a /goal_pose or /initialpose sent
+# from RViz on the workstation arrives stamped ~2 years in the future and the
+# transform lookup for it fails or lands nowhere sane. Logs also become
+# impossible to correlate with anything off-robot.
+now=$(date +%s)
+year=$(date +%Y)
+note "system time: $(date -Is)  (epoch $now)"
+if pgrep -x phc2sys >/dev/null 2>&1 || pgrep -x ptp4l >/dev/null 2>&1; then
+  note "WARNING: phc2sys/ptp4l is running and may be steering this clock from"
+  note "the lidar's PTP clock rather than from real time. Unless you have a"
+  note "genuine PTP grandmaster, disable it:"
+  note "  sudo systemctl disable --now phc2sys ptp4l"
+  fail=1
+fi
+# 1767225600 = 2026-01-01. A clock older than that on this deployment is stale,
+# not merely unsynchronised. Bump this when the guard stops being meaningful.
+if (( now < 1767225600 )); then
+  note "STALE: the clock reads $year. Set it from the workstation, then RESTART"
+  note "the containers — changing the clock under a running stack leaves"
+  note "poisoned transforms in every tf2 buffer."
+  note "  workstation:  date +%s"
+  note "  here:         sudo date -s \"@<that number>\""
+  fail=1
+else
+  note "OK: clock is plausible. Confirm it matches the workstation to <50 ms:"
+  note "  run 'date +%s.%N' on both within the same second."
+fi
+
+echo
 echo "== what the M20 is publishing (host Foxy/Fast-DDS side) =="
 if command -v ros2 >/dev/null 2>&1; then
   # Deliberately NOT run inside a container: this is the host's own Foxy stack,

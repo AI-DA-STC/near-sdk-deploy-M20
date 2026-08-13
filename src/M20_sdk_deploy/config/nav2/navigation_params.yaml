@@ -212,24 +212,22 @@ controller_server:
 
       # ── DWB critics ──
       critics:
+        - "RotateToGoal"
         - "ObstacleFootprint"
-        - "GoalDist"
-        - "GoalAlign"
         - "PathDist"
-        - "PathAlign"
+        - "GoalDist"
 
+      RotateToGoal:
+        scale: 32.0
+        slowing_factor: 5.0
+        lookahead_time: -1.0
+        xy_goal_tolerance: 0.3    
       ObstacleFootprint:
-        scale: 5.0
+        scale: 1.0                
       PathDist:
-        scale: 48.0
-      PathAlign:
-        scale: 20.0
-        forward_point_distance: 0.1
+        scale: 32.0
       GoalDist:
-        scale: 10.0
-      GoalAlign:
-        scale: 5.0
-        forward_point_distance: 0.1
+        scale: 24.0
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COSTMAPS

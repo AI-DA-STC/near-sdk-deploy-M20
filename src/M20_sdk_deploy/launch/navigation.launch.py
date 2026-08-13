@@ -65,10 +65,6 @@ from pyprojroot import here
 
 PROJECT_ROOT = here()
 
-# ── Run logs: navigation_logs/<timestamp>/ at the project root ──────────
-# Per-node rcutils .log files land here directly (via ROS_LOG_DIR below).
-# launch.log is already bound to ~/.ros/log/<run>/ before this file is
-# imported, so it is exposed here as a symlink instead of being moved.
 LOG_DIR = PROJECT_ROOT / "navigation_logs" / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -140,13 +136,6 @@ def generate_launch_description():
         SetEnvironmentVariable("PYTHONUNBUFFERED", "1"),
     ]
 
-    # ══════════════════════════════════════════════════════════════════════
-    # LOCALIZATION
-    # ══════════════════════════════════════════════════════════════════════
-
-    # ── Sim-only: static TFs mapping Gazebo sensor frames to base_link ────
-    # (On the robot the bridge publishes base_link->lidar_link and the URDF
-    #  supplies the rest; in Gazebo the sensor frames carry model-scoped names.)
     static_tf_gazebo_velodyne = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -174,13 +163,13 @@ def generate_launch_description():
         parameters=[{
             "use_sim_time": use_sim_time,
             "target_frame": "base_link",
+
             "min_height": -0.1,
             "max_height": 0.5,
             "angle_min": -3.14159,
             "angle_max": 3.14159,
-            # 2*pi/1024 — matches the sim gpu_lidar horizontal sample count in
-            # M20_velodyne.sdf; also a sane bin width for the real merged cloud.
-            "angle_increment": 0.00614,
+
+            "angle_increment": 0.01228,
             "range_min": 0.9,
             "range_max": 70.0,
             "inf_epsilon": 1.0,
@@ -192,12 +181,7 @@ def generate_launch_description():
         ],
     )
 
-    # Sim-only: rf2o scan-matching odometry -> /odom. On the robot, m20_bridge
-    # supplies /odom from the onboard state estimator (/ODOM) instead — see
-    # the module docstring.
-    #
-    # publish_tf: False — odom->base_link belongs to ekf_node alone. A second
-    # publisher of that edge would fight it.
+
     rf2o_laser_odometry = Node(
         package="rf2o_laser_odometry",
         executable="rf2o_laser_odometry_node",
@@ -215,9 +199,7 @@ def generate_launch_description():
         condition=IfCondition(sim),
     )
 
-    # EKF — publishes odom -> base_link and /odometry/filtered.
-    # Sim: fuses rf2o (x, y) + /imu (yaw rate), per navigation_params.yaml —
-    # rf2o has no absolute heading reference, so yaw is IMU-rate-only there.
+
     ekf_node_sim = Node(
         package="robot_localization",
         executable="ekf_node",
@@ -226,17 +208,7 @@ def generate_launch_description():
         condition=IfCondition(sim),
     )
 
-    # Robot: /odom is the onboard fused (joint encoder + foot contact + IMU)
-    # odometry relayed by m20_bridge, which DOES carry an absolute, drift-free
-    # yaw — so odom0 supplies x, y AND yaw as absolute measurements.
-    #
-    # odom0_differential: False is load-bearing, not cosmetic. The yaml default
-    # (True, tuned for rf2o in sim) differentiates the absolute pose into a
-    # velocity BEFORE fusing it, which throws away exactly the absolute yaw
-    # reference this branch exists to use — degrading back into dead-reckoned
-    # yaw with nothing to snap back to, and double-fusing yaw rate against
-    # imu0's yaw_vel in the process. Leaving this unset here silently
-    # re-inherits the sim-tuned default; it must stay an explicit override.
+
     ekf_node_robot = Node(
         package="robot_localization",
         executable="ekf_node",

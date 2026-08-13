@@ -1,30 +1,4 @@
-# =============================================================================
-# Deployment image for the M20 robot (ONE image, TWO containers).
-#
-# This is the SLIM, on-robot counterpart to .devcontainer/Dockerfile.
-# It starts from ros-base (NO Gazebo, NO simulation stack; RViz is added as the
-# last apt layer -- see the RUNTIME-ONLY APT PACKAGES note below) and builds
-# the whole runtime workspace: the robot-agnostic nav_core (rl_deploy) AND the
-# M20-specific bridge (m20_bridge). Two containers run from this one image:
-#
-#   nav_core   : ros2 launch rl_deploy   navigation.launch.py sim:=false
-#   m20_bridge : ros2 launch m20_bridge  m20_bridge.launch.py
-#
-# The split is LOGICAL (two launch files); building one image keeps the offline
-# transfer a single tar. Porting to another robot = add a <robot>_bridge package
-# and point the bridge container at its launch file; nav_core is untouched.
-# See docker-compose.yml for the wiring.
-#
-# Build (from the repo root, so the build context includes src/):
-#   docker build -f Dockerfile.deploy -t m20-deploy:humble .
-#
-# Run (preferred): docker compose up
-#   or manually, two containers:
-#   docker run --rm -it --network=host --ipc=host m20-deploy:humble \
-#       ros2 launch m20_bridge m20_bridge.launch.py
-#   docker run --rm -it --network=host --ipc=host -v ~/maps:/root/ros_ws/maps \
-#       m20-deploy:humble ros2 launch rl_deploy navigation.launch.py sim:=false
-# =============================================================================
+
 FROM ros:humble-ros-base
 
 SHELL [ "/bin/bash", "-c" ]
@@ -76,55 +50,6 @@ RUN apt-get update \
     && rosdep install --from-paths src --ignore-src -r -y --skip-keys "$SKIP" \
     && rm -rf /var/lib/apt/lists/*
 
-# QEMU CROSS-BUILD ROBUSTNESS (amd64 laptop emulating arm64 via binfmt).
-#
-# MODE 1 -- find_library() goes blind, DETERMINISTICALLY, while building
-# rf2o_laser_odometry:
-#     CMake Error at .../orocos_kdl_vendor/cmake/orocos_kdl_vendor-extras.cmake:17
-#       Could not find orocos_kdl_LIBRARY using the following names: orocos-kdl
-#
-# This is NOT a missing package and NOT a wrong search path. Measured by
-# instrumenting that exact line inside the emulated container:
-#
-#   if(EXISTS /usr/lib/aarch64-linux-gnu/liborocos-kdl.so)   -> YES
-#   file(GLOB .../liborocos-kdl*)  -> all three files listed, same process
-#   shell `ls /usr/lib/aarch64-linux-gnu | wc -l`            -> 2179 entries
-#   find_library(NAMES orocos-kdl)                           -> NOTFOUND
-#   find_library(NAMES orocos-kdl PATHS <that dir> NO_DEFAULT_PATH) -> NOTFOUND
-#   find_library for ssl / crypto / m / z / dl in that dir    -> ALL NOTFOUND
-#   CMAKE_IGNORE_PATH, CMAKE_SYSROOT, CMAKE_FIND_ROOT_PATH    -> all empty
-#   CMAKE_LIBRARY_ARCHITECTURE=aarch64-linux-gnu, suffixes=.so;.a  (all correct)
-#
-# So CMake can stat and glob the files, and --debug-find confirms it *considered*
-# the right directory, yet find_library resolves nothing in that entire
-# directory. -DCMAKE_LIBRARY_PATH was tried and does NOT help (the directory was
-# already being searched; enumeration inside find_library is what fails).
-# NOTE: the same find_library calls succeed in a standalone CMake project in the
-# same container -- it only goes blind inside this nested find_package chain, and
-# that last step is not fully root-caused.
-#
-# FIX: hand CMake the absolute path it already agrees exists. find_library skips
-# the search entirely when its result variable is a valid cache entry, so
-# pre-seeding orocos_kdl_LIBRARY makes extras:17 a no-op. Verified: configure OK.
-# This is a pinned fact about the arm64 image, not a guess -- if the path ever
-# moves, the build fails loudly at this line rather than silently mislinking.
-#
-# MODE 2 -- the same blindness, but INTERMITTENT, hitting a different package:
-#     Package 'rcutils' exports the library 'rcutils' which couldn't be found
-#       (ament_cmake_export_libraries-extras.cmake:40, a NO_DEFAULT_PATH search
-#        of /opt/ros/humble/lib, where librcutils.so is present at 93360 bytes)
-# Observed failing on one build and succeeding on the next from the identical
-# cached layer, so it cannot be pre-seeded by path -- only retried. Hence the
-# loop. colcon is incremental: a retry reconfigures already-finished packages
-# cheaply and only recompiles what failed. The loop is still a real gate -- if
-# every attempt fails, ok stays 0 and the image build fails, so a genuinely
-# broken package is never papered over.
-#
-# MAKEFLAGS caps emulated compile parallelism (this host has 24 cores). It is a
-# general QEMU stress reducer for MODE 2, NOT a fix for MODE 1 -- both failures
-# happen during cmake configure, when make is not even running.
-#
-# Building natively on the arm64 robot avoids every bit of this.
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
     && export MAKEFLAGS=-j8 \
     && CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release \
@@ -139,29 +64,12 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
        done \
     && if [ "$ok" != 1 ]; then echo ">>> all colcon attempts failed"; exit 1; fi
 
-# RUNTIME-ONLY APT PACKAGES -- DELIBERATELY THE LAST APT LAYER.
-#
-# Anything here is needed at run time only, never to compile the workspace, so
-# it belongs AFTER the colcon build. Adding a package to the apt layer at the
-# top of this file invalidates that layer and cascades into rosdep AND the
-# ~5.5-minute emulated colcon build; adding it here costs only this layer.
-# Put new runtime packages HERE unless colcon genuinely needs them to compile.
-#
-# rviz2 is not a build dependency of any package in src/ (rosdep does not pull
-# it), and it is ~400 MB, which is why ros-base was chosen as the base image in
-# the first place. It is included so this one image can also drive on-robot
-# visualisation over X; RMW_IMPLEMENTATION is already rmw_cyclonedds_cpp in this
-# image, which RViz must use or it will not see nav_core at all.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ros-humble-rviz2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Network triage tools (~3 MB). ros-base ships NONE of ip/ping/ss/tcpdump, so
-# without these scripts/check_remote_viz.sh cannot test a single network layer
-# from inside the container and stops at "'ip' not found". Since these containers
-# run network_mode: host, what they measure IS the host's networking — which is
-# what makes in-container triage meaningful rather than a detour.
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         iproute2 \

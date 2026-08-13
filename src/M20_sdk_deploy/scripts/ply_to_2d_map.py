@@ -1,5 +1,38 @@
 #!/usr/bin/env python3
-"""Convert a 3D PLY point cloud to a 2D Nav2-compatible occupancy grid (.pgm + .yaml)."""
+"""Convert a 3D PLY point cloud to a 2D Nav2-compatible occupancy grid (.pgm + .yaml).
+
+THE HEIGHT SLICE MUST MATCH THE LIVE /scan SLICE. This is the single most
+important thing about this script, and getting it wrong silently destroys AMCL.
+
+AMCL scores a pose by comparing live /scan beams against occupied cells in this
+grid. /scan is produced by pointcloud_to_laserscan in navigation.launch.py, which
+keeps points between `min_height` and `max_height` IN base_link. Every map cell
+outside that band is structure the lidar can never see; every beam from outside
+it has no cell to match. Both directions are damaging: unseeable map cells
+flatten the likelihood field so no pose stands out, and unmapped beams actively
+penalise the CORRECT pose. The filter then wanders and snaps.
+
+The two slices live in different frames, so they are related by the lidar mount:
+
+    z_ply  =  z_base_link  -  (base_link -> lidar_link).z
+
+GLIM's world origin is the sensor's starting pose, so PLY z is measured from the
+lidar, while pointcloud_to_laserscan measures from base_link. On the M20 the
+static TF in m20_bridge.launch.py puts lidar_link at base_link z = -0.013, hence:
+
+    min_height -0.10  ->  --z-min  -0.09      (measured floor: 0.52 m below the
+    max_height  0.50  ->  --z-max   0.51       lidar, so this band is 0.43-1.03 m
+                                               above the floor)
+
+The defaults below encode exactly that. CHANGE BOTH TOGETHER OR NEITHER — and if
+you change the lidar mount height, redo the arithmetic. The previous defaults
+(0.1 / 1.5) came from nowhere in particular and put 66% of the map's obstacles at
+heights the lidar cannot reach.
+
+Sanity-check a new cloud before trusting it: the densest horizontal band below
+z=0 is the floor. If it is not ~0.5 m below zero, this robot was not standing
+normally when the SLAM run started and the numbers above do not apply.
+"""
 
 import argparse
 import numpy as np
@@ -140,8 +173,15 @@ if __name__ == "__main__":
     parser.add_argument("ply", help="Path to input .ply file")
     parser.add_argument("-o", "--output", default=None, help="Output directory (default: same as input)")
     parser.add_argument("-r", "--resolution", type=float, default=0.05, help="Grid resolution in m/pixel")
-    parser.add_argument("--z-min", type=float, default=0.1, help="Min height for obstacle slice (m)")
-    parser.add_argument("--z-max", type=float, default=1.5, help="Max height for obstacle slice (m)")
+    # See the module docstring: these MIRROR pointcloud_to_laserscan's
+    # min_height/max_height in navigation.launch.py, shifted by the base_link ->
+    # lidar_link z offset (-0.013). Do not tune them independently of that node.
+    parser.add_argument("--z-min", type=float, default=-0.09,
+                        help="Min height for obstacle slice (m, relative to the "
+                             "PLY origin = the lidar). Must match /scan's slice.")
+    parser.add_argument("--z-max", type=float, default=0.51,
+                        help="Max height for obstacle slice (m, relative to the "
+                             "PLY origin = the lidar). Must match /scan's slice.")
     parser.add_argument("--padding", type=int, default=10, help="Padding pixels around map border")
     args = parser.parse_args()
 

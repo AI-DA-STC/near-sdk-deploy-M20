@@ -454,7 +454,20 @@ class RouteServer(Node):
         q.w = math.cos(yaw * 0.5)
         return q
 
-    def _to_path_msg(self, dense: list[tuple[float, float]]) -> Path:
+    @staticmethod
+    def _has_orientation(q: Quaternion | None) -> bool:
+        """True if q is a usable rotation (a default-constructed Quaternion is
+        all zeros, which is not a valid rotation and would make RotateToGoal
+        aim at garbage)."""
+        if q is None:
+            return False
+        return math.sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w) > 1e-6
+
+    def _to_path_msg(
+        self,
+        dense: list[tuple[float, float]],
+        goal_orientation: Quaternion | None = None,
+    ) -> Path:
         msg = Path()
         stamp = self.get_clock().now().to_msg()
         msg.header = Header(frame_id=self.frame_id, stamp=stamp)
@@ -468,9 +481,19 @@ class RouteServer(Node):
                 ps.pose.orientation = self._yaw_quat(
                     x, y, dense[i + 1][0], dense[i + 1][1]
                 )
-            else:
-                # last pose inherits heading from previous
+            elif self._has_orientation(goal_orientation):
+                # The heading the OPERATOR asked for. Graph geometry only says
+                # which way the last edge ran, which is unrelated to it — and
+                # DWB's RotateToGoal reads exactly this pose to pick the final
+                # in-place rotation, so inheriting here is what made the robot
+                # settle facing the wrong way.
+                ps.pose.orientation = goal_orientation
+            elif msg.poses:
+                # No heading requested: keep the last segment's direction.
                 ps.pose.orientation = msg.poses[-1].pose.orientation
+            else:
+                # Single-pose path — nothing to inherit from.
+                ps.pose.orientation = Quaternion(w=1.0)
             msg.poses.append(ps)
         return msg
 
@@ -518,7 +541,7 @@ class RouteServer(Node):
         self.get_logger().info(
             f"Path: {len(waypoints)} waypoints → {len(dense)} poses"
         )
-        self._path_pub.publish(self._to_path_msg(dense))
+        self._path_pub.publish(self._to_path_msg(dense, goal.pose.orientation))
 
     # ── service callback ─────────────────────────────────────────────────────
 
@@ -543,7 +566,9 @@ class RouteServer(Node):
             return response
 
         dense = self._densify(waypoints, self.res)
-        path = self._to_path_msg(dense)
+        # Replans round-trip the orchestrator's cached goal back through here,
+        # so the requested heading has to survive this path too.
+        path = self._to_path_msg(dense, request.goal.pose.orientation)
 
         self.get_logger().info(
             f"Path: {len(waypoints)} graph waypoints → "

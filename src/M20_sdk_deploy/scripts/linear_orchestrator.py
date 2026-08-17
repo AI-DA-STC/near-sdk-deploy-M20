@@ -498,6 +498,14 @@ class LinearOrchestrator(Node):
             )
             return
 
+        # Restore the operator's requested final heading. SmacPlanner2D is a 2D
+        # grid search and does not carry orientations through, and the smoother
+        # is not repairing them either, so whatever route_server put on the last
+        # pose is gone by the time the path arrives here. DWB's RotateToGoal
+        # reads exactly this pose to choose the final in-place rotation.
+        if path.poses and self._original_goal is not None:
+            path.poses[-1].pose.orientation = self._original_goal.pose.orientation
+
         goal_msg = FollowPath.Goal()
         goal_msg.path = path
         goal_msg.controller_id = "FollowPath"

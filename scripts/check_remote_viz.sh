@@ -3,7 +3,8 @@
 # check_remote_viz.sh — why can't the laptop see the robot's ROS topics?
 #
 #   bash scripts/check_remote_viz.sh                 # run ON THE LAPTOP
-#   GOS=10.21.31.104 AOS=192.168.8.103 bash scripts/check_remote_viz.sh
+#   GOS=10.21.31.104 AOS=192.168.8.102 AOS_INT=10.21.31.103 \
+#     bash scripts/check_remote_viz.sh
 #
 # Walks the stack BOTTOM-UP and stops at the first layer that is actually
 # broken, because every layer above it will look broken too and fixing the top
@@ -29,7 +30,8 @@
 set -uo pipefail
 
 GOS="${GOS:-10.21.31.104}"        # nav_core, on the robot's internal switch
-AOS="${AOS:-192.168.8.103}"       # the robot host that routes between the two
+AOS="${AOS:-192.168.8.102}"       # the routing host, as seen from the WIFI side
+AOS_INT="${AOS_INT:-10.21.31.103}"  # the SAME host, as seen from the internal switch
 DOMAIN="${ROS_DOMAIN_ID:-0}"
 SPDP_PORT=$(( 7400 + 250 * DOMAIN + 10 ))    # index 0; +2 per participant index
 
@@ -145,7 +147,10 @@ else
   note " 4. Does the GOS know the way back?  'ip route' edits do NOT survive a"
   note "    reboot, which makes this the most common regression here:"
   note "      [GOS]  ip route get ${SRC:-<laptop-ip>}"
-  note "      [GOS]  sudo ip route replace 192.168.8.0/24 via $AOS"
+  note "      [GOS]  sudo ip route replace 192.168.8.0/24 via $AOS_INT"
+  note "    Note the next hop is $AOS_INT, NOT $AOS. A gateway must be on-link,"
+  note "    and the GOS has no interface on the wifi subnet — 'via $AOS' is"
+  note "    rejected with 'Nexthop has invalid gateway'."
   note "      [GOS]  sudo ufw status"
   note "    Persist it in /etc/netplan/*.yaml once it works."
   note ""

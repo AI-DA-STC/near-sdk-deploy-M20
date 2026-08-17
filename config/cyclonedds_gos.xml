@@ -5,86 +5,23 @@
   <Domain id="any">
     <General>
       <Interfaces>
-        <NetworkInterface name="lo" priority="default" multicast="default"/>
-        <NetworkInterface address="10.21.31.104" priority="default" multicast="default"/>
+        <NetworkInterface address="10.21.31.104" priority="10" multicast="default"/>
+        <NetworkInterface name="lo" priority="2" multicast="default"/>
       </Interfaces>
-
-      <!-- spdp: multicast for participant discovery only, unicast for all
-           DATA. Keeps the relayed 1.8 MB clouds off multicast. -->
       <AllowMulticast>spdp</AllowMulticast>
       <EnableMulticastLoopback>true</EnableMulticastLoopback>
-
-      <!-- Loopback-tuned fragmentation. /LIDAR/POINTS arrives from the robot's
-           own Fast-DDS publisher as a ~1.2 MB fragmented sample over lo
-           (MTU 65536), so pack fragments into near-64 KB datagrams.
-
-           CAVEAT for RViz over the LAN: a 65500 B datagram sent to the laptop
-           across a 1500-MTU link is IP-fragmented ~45 ways and one lost IP
-           fragment kills it. That only bites if you visualise a point cloud
-           remotely — the nav data path is entirely on lo. If remote cloud viz
-           drops, set MaxMessageSize to 1400B here (and accept the extra
-           syscalls) or view a decimated topic. -->
       <MaxMessageSize>65500B</MaxMessageSize>
       <FragmentSize>8000B</FragmentSize>
     </General>
-
     <Discovery>
       <Peers>
-        <!-- Every participant in the nav path is on this host; name it
-             explicitly so discovery never depends on lo multicast working. -->
         <Peer address="localhost"/>
-
-        <!-- REMOTE RVIZ. The laptop is NOT found by SPDP multicast whenever it
-             reaches us through the AOS (wifi 192.168.8.x -> AOS -> internal
-             switch): multicast does not cross that router hop, so without a
-             unicast peer here the announcement never leaves this subnet.
-
-             Strictly, one side naming the other is enough — RViz's own SPDP
-             carries its locators, so a participant that RECEIVES it can reply.
-             This entry makes discovery symmetric instead, so it does not depend
-             on which side happens to speak first, and so a restarted container
-             re-announces to RViz rather than waiting to be probed.
-
-             Set to the laptop's wifi address; it is DHCP and has already changed
-             once (.236 -> .160), so prefer a static lease. An unreachable or
-             stale address here costs only a few wasted SPDP datagrams, never a
-             startup failure — but it also silently buys nothing, so keep it in
-             step with cyclonedds_laptop.xml's <Interfaces>.
-             Leave BOTH files' peers in place; see scripts/check_remote_viz.sh. -->
         <Peer address="192.168.8.160"/>
       </Peers>
-
-      <!-- REQUIRED, DO NOT DROP. Unicast discovery needs each participant to
-           own a predictable port slot, mapped from a "participant index":
-             discovery = 7400 + 250*domain + 10 + 2*index
-             user      = 7400 + 250*domain + 11 + 2*index
-           'auto' probes indices 0..MaxAutoParticipantIndex, and CycloneDDS
-           defaults that to just 9. The robot's own Fast-DDS stack shares this
-           domain and port space (network_mode host) and holds indices 0-9, so
-           all ten probes fail and the container dies at startup with:
-             Failed to find a free participant index for domain 0
-             rmw_create_node: failed to create domain, error Error
-           Measured: our participants land on index 10 and up. 60 leaves room for
-           ~58 of theirs. Raise it if the error returns; count what is taken with
-             ss -lun | awk '$4 ~ /:74[0-9][0-9]$/' | sort -u
-           The only cost of a larger value is extra SPDP probe packets.
-
-           ParticipantIndex=none does NOT work as an alternative: it takes an
-           ephemeral port and so cannot coexist with the unicast Peers above.
-           Measured on both CycloneDDS 0.7 and 0.10. -->
       <ParticipantIndex>auto</ParticipantIndex>
       <MaxAutoParticipantIndex>60</MaxAutoParticipantIndex>
     </Discovery>
-
     <Internal>
-      <!-- SILENTLY CLAMPED to net.core.rmem_max (212992 = 208 KB stock). Must
-           be raised on the HOST; a network_mode host container cannot set it:
-             sudo sysctl -w net.core.rmem_max=16777216
-           This is the single most likely reason a large PointCloud2 never
-           arrives while a small Imu does. -->
-      <!-- CycloneDDS 0.10 renamed this; the old
-           <MinimumSocketReceiveBufferSize> still works but logs a
-           "setting moved to" notice on every start. -->
       <SocketReceiveBufferSize min="8MB"/>
       <DefragUnreliableMaxSamples>16</DefragUnreliableMaxSamples>
     </Internal>

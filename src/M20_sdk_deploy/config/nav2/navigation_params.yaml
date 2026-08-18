@@ -283,7 +283,7 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       transform_tolerance: 0.8
-      footprint: "[[-0.41, -0.3], [-0.41, 0.3], [0.41, 0.3], [0.41, -0.3]]"
+      footprint: "[[-0.41, -0.2], [-0.41, 0.2], [0.41, 0.2], [0.41, -0.2]]"
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
 
       static_layer:
@@ -308,7 +308,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # >= the computed inscribed radius (0.310 for this footprint).
-        inflation_radius: 0.35
+        inflation_radius: 0.3
         cost_scaling_factor: 1.0
 
       always_send_full_costmap: false

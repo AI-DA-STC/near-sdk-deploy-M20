@@ -417,6 +417,12 @@ def generate_launch_description():
         arguments=["0.32028", "0", "-0.013", "0", "0", "0",
                    "base_link", "lidar_link"])
 
+    static_tf_imu = Node(
+        package="tf2_ros", executable="static_transform_publisher",
+        name="imu_link_static_tf",
+        arguments=["0.0632", "-0.0268", "-0.0435", "0", "0", "0",
+                   "base_link", "imu_link"])
+
     rsp = Node(
         package="robot_state_publisher", executable="robot_state_publisher",
         name="m20_robot_state_publisher", output="screen",
@@ -450,5 +456,5 @@ def generate_launch_description():
         restamp_odom, restamp_odom_direct,
         restamp_lidar, restamp_lidar2,
         cam1, cam2,
-        static_tf_lidar, rsp,
+        static_tf_lidar, static_tf_imu, rsp,
     ])

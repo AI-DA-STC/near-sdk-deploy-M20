@@ -6,8 +6,7 @@
     "enable_local_mapping": true,
     "extension_modules": [
       "libmemory_monitor.so",
-      "libstandard_viewer.so",
-      "librviz_viewer.so"
+      "libstandard_viewer.so"
     ],
     "image_qos": {
       "profile": "sensor_data"
@@ -15,8 +14,10 @@
     "image_topic": "/image",
     "imu_frame_id": "imu_link",
     "imu_qos": {
-      "depth": 100,
-      "profile": "sensor_data"
+      "depth": 10,
+      "durability": "volatile",
+      "profile": "sensor_data",
+      "reliability": "reliable"
     },
     "imu_time_offset": 0.0,
     "imu_topic": "/imu",
@@ -25,8 +26,10 @@
     "map_frame_id": "map",
     "odom_frame_id": "odom",
     "points_qos": {
-      "depth": 50,
-      "profile": "sensor_data"
+      "depth": 10,
+      "durability": "volatile",
+      "profile": "sensor_data",
+      "reliability": "reliable"
     },
     "points_time_offset": 0.0,
     "points_topic": "/lidar/points",

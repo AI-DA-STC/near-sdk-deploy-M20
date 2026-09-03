@@ -57,25 +57,13 @@
   // image_qos              : QoS options for image topic subscription. See imu_qos for details.
   "glim_ros": {
     // Backend modules
-    "enable_local_mapping": true,
-    // Global mapping runs pose-graph optimization / loop closure, which can
-    // snap GLIM's own internal pose between optimization steps. Fine for the
-    // offline "GLIM mapping" workflow (DEPLOYMENT.md), where those jumps only
-    // rewrite the saved map, but disabled here because this config is also
-    // used when GLIM runs read-only alongside live nav_core, where a snap
-    // would be a visible pose discontinuity. Flip back to true only for a
-    // dedicated offline mapping session (bag playback, no live TF consumers).
+    "enable_local_mapping": false,
     "enable_global_mapping": false,
     // Points config
     "keep_raw_points": false,
-    // IMU config
-    // imu_time_offset: calibrate offline by correlating IMU gyro vs scan-match
-    // angular rate if the map bends on turns. acc_scale=1.0 assumes /imu accel is
-    // m/s^2 (ROS convention) — verify |acc| ~= 9.8 at rest in the bag.
     "imu_time_offset": 0.0,
     "points_time_offset": 0.0,
     "acc_scale": 1.0,
-    // TF config — match the frame_ids the m20_bridge restamp nodes stamp
     "imu_frame_id": "imu_link",
     "lidar_frame_id": "lidar_link",
     "base_frame_id": "base_link",
@@ -83,33 +71,24 @@
     "map_frame_id": "map",
     "publish_imu2lidar": true,
     "tf_time_offset": 1e-6,
-    // Extension modules
-    // "librviz_viewer.so" is deliberately OMITTED: it is the module that
-    // broadcasts GLIM's "map -> odom -> base_frame" / "imu -> lidar" TF and
-    // republishes odom/pose topics (see the TF config comment above). AMCL +
-    // ekf_node already own that TF subtree during live nav_core operation;
-    // re-add it only for a standalone GLIM debugging session with no other TF
-    // publisher of map->odom/odom->base_link running.
-    // "libstandard_viewer.so" is unaffected — it's a local OpenGL viewer
-    // window (config_viewer.json), not a ROS TF/topic publisher.
     "extension_modules": [
       "libmemory_monitor.so",
       "libstandard_viewer.so"
-      // "librviz_viewer.so"  -- disabled: publishes TF that collides with AMCL/EKF
-      // "libimu_validator.so"
     ],
-    // Topics (GENERIC contract — same names in sim and on the robot)
     "imu_topic": "/imu",
     "points_topic": "/lidar/points",
     "image_topic": "/image",
-    // QoS options
     "imu_qos": {
       "profile": "sensor_data",
-      "depth": 100
+      "depth": 10,
+      "durability": "volatile",
+      "reliability": "reliable"
     },
     "points_qos": {
       "profile": "sensor_data",
-      "depth": 50
+      "depth": 10,
+      "durability": "volatile",
+      "reliability": "reliable"
     },
     "image_qos": {
       "profile": "sensor_data"

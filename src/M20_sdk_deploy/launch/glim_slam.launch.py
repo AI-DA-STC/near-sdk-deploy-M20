@@ -18,10 +18,8 @@ from launch_ros.actions import Node
 CONFIG_PATH = os.path.join(
     get_package_share_directory("rl_deploy"), "config", "glim", "M20_REAL"
 )
-# maps/ isn't an installed package resource, so there's no share-dir
-# equivalent — this assumes invocation from the workspace root, as in
-# every documented command in DEPLOYMENT.md.
 DUMP_PATH = os.path.join(os.getcwd(), "maps")
+os.makedirs(DUMP_PATH, exist_ok=True)
 
 
 def generate_launch_description():

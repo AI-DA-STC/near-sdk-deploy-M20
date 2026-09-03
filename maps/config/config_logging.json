@@ -1,6 +1,6 @@
 {
   "logging": {
-    "log_dir": "/home/krishna/Workspace/near-sdk-deploy-M20/glim_logs",
+    "log_dir": "glim_logs",
     "max_file_size_kb": 8192,
     "max_files": 10,
     "rotate_logs": true,

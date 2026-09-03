@@ -1,13 +1,13 @@
 num_submaps: 5
-num_all_frames: 970
+num_all_frames: 1761
 num_matching_cost_factors: 10
-matching_cost vgicp 0 1
-matching_cost vgicp 0 2
-matching_cost vgicp 1 2
-matching_cost vgicp 0 3
-matching_cost vgicp 1 3
-matching_cost vgicp 2 3
-matching_cost vgicp 0 4
-matching_cost vgicp 1 4
-matching_cost vgicp 2 4
 matching_cost vgicp 3 4
+matching_cost vgicp 2 4
+matching_cost vgicp 1 4
+matching_cost vgicp 0 4
+matching_cost vgicp 2 3
+matching_cost vgicp 1 3
+matching_cost vgicp 0 3
+matching_cost vgicp 1 2
+matching_cost vgicp 0 2
+matching_cost vgicp 0 1

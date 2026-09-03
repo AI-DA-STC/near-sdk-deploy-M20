@@ -5,6 +5,7 @@
 #   ENABLE_TX=true docker compose up   # arm the Cmd-21 actuation path (after T4-T6)
 #   MAP=my_site_2d.yaml docker compose up nav_core   # pick a different map
 #   MAPS_DIR=/data/maps docker compose up nav_core   # maps live somewhere else
+#   GRAPH=my_graph.gml docker compose up nav_core    # pick a different waypoint graph
 
 services:
   m20_bridge:
@@ -40,11 +41,12 @@ services:
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
       - CYCLONEDDS_URI=file:///root/ros_ws/config/cyclonedds_gos.xml
     volumes:
-      - ${MAPS_DIR:-/home/user/maps}:/root/ros_ws/maps
+      - ${MAPS_DIR:-./maps_export/v2}:/root/ros_ws/maps
       - ./config/cyclonedds_gos.xml:/root/ros_ws/config/cyclonedds_gos.xml:ro
     command: >
       ros2 launch rl_deploy navigation.launch.py sim:=false
-      map:=/root/ros_ws/maps/${MAP:-ST_hanger_2d.yaml}
+      map:=/root/ros_ws/maps/${MAP:-ST_hanger_v2_2d.yaml}
+      graph_file:=/root/ros_ws/maps/${GRAPH:-graph.gml}
     restart: unless-stopped
 
   rviz:

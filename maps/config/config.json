@@ -3,7 +3,7 @@
     "config_global_mapping": "config_global_mapping_cpu.json",
     "config_logging": "config_logging.json",
     "config_odometry": "config_odometry_cpu.json",
-    "config_path": "/root/ros_ws/maps/config",
+    "config_path": "/root/ros_ws/install/rl_deploy/share/rl_deploy/config/glim/M20_REAL",
     "config_preprocess": "config_preprocess.json",
     "config_ros": "config_ros.json",
     "config_sensors": "config_sensors.json",
@@ -11,7 +11,7 @@
     "config_viewer": "config_viewer.json"
   },
   "meta": {
-    "imu_frame_id": "imu_link",
+    "imu_frame_id": "",
     "lidar_frame_id": "lidar_link"
   }
 }

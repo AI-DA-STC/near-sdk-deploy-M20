@@ -86,8 +86,8 @@ def generate_launch_description():
     default_params = os.path.join(
         pkg_share, "config", "nav2", "navigation_params.yaml"
     )
-    default_map = str(PROJECT_ROOT / "maps" / "edifice_SLAM_v0_2d.yaml")
-    default_graph = str(PROJECT_ROOT / "maps" / "graph.gml")
+    default_map = str(PROJECT_ROOT / "maps_export" / "v2" / "ST_hanger_v2_2d.yaml")
+    default_graph = str(PROJECT_ROOT / "maps_export" / "v2" / "graph.gml")
 
     # ── Launch arguments ──────────────────────────────────────────────────
 
@@ -209,23 +209,24 @@ def generate_launch_description():
     )
 
 
+    # NOTE: previously this Node hardcoded an odom0/odom0_config/odom0_differential
+    # override here that fused /odom's x, y, AND yaw as an ABSOLUTE (non-differential)
+    # measurement every cycle -- i.e. it treated the M20's onboard (legged) odometry
+    # yaw as ground truth and overwrote the filter's yaw with it each update. Legged
+    # odometry yaw is least reliable during in-place rotation (foot slip, no wheel
+    # encoders), so a single bad sample would teleport the fused pose outright. That
+    # override is removed: this now falls back to navigation_params.yaml's ekf_node
+    # section (same as ekf_node_sim below), which fuses odom x,y DIFFERENTIALLY
+    # (odom0_differential: true, yaw excluded) and lets imu0's yaw_vel integrate
+    # heading instead -- matching the yaml's own documented intent ("IMU owns
+    # heading"). This only works once base_link->imu_link actually exists in the TF
+    # tree (see static_tf_imu in m20_bridge.launch.py) -- without it, imu0 fusion
+    # silently fails and heading has no correction source at all.
     ekf_node_robot = Node(
         package="robot_localization",
         executable="ekf_node",
         name="ekf_node",
-        parameters=[
-            params_file,
-            {
-                "use_sim_time": use_sim_time,
-                "odom0": "/odom",
-                "odom0_config": [True,  True,  False,   # x, y, z
-                                  False, False, True,    # roll, pitch, yaw
-                                  False, False, False,   # vx, vy, vz
-                                  False, False, False,   # roll_vel, pitch_vel, yaw_vel
-                                  False, False, False],  # ax, ay, az
-                "odom0_differential": False,
-            },
-        ],
+        parameters=[params_file, {"use_sim_time": use_sim_time}],
         condition=UnlessCondition(sim),
     )
 

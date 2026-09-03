@@ -173,10 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("ply", help="Path to input .ply file")
     parser.add_argument("-o", "--output", default=None, help="Output directory (default: same as input)")
     parser.add_argument("-r", "--resolution", type=float, default=0.05, help="Grid resolution in m/pixel")
-    # See the module docstring: these MIRROR pointcloud_to_laserscan's
-    # min_height/max_height in navigation.launch.py, shifted by the base_link ->
-    # lidar_link z offset (-0.013). Do not tune them independently of that node.
-    parser.add_argument("--z-min", type=float, default=-0.09,
+    parser.add_argument("--z-min", type=float, default=0.1,
                         help="Min height for obstacle slice (m, relative to the "
                              "PLY origin = the lidar). Must match /scan's slice.")
     parser.add_argument("--z-max", type=float, default=0.51,

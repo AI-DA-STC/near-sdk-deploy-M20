@@ -18,8 +18,8 @@
       0.0,
       1.0
     ],
-    "autoconf_perpoint_times": true,
-    "autoconf_prefer_frame_time": false,
+    "autoconf_perpoint_times": false,
+    "autoconf_prefer_frame_time": true,
     "distortion_coeffs": [
       -0.02295507941388206,
       0.0681131726659881,
@@ -29,7 +29,7 @@
     ],
     "distortion_model": "plumb_bob",
     "global_shutter_camera": true,
-    "global_shutter_lidar": true,
+    "global_shutter_lidar": false,
     "image_size": [
       752,
       480
@@ -45,7 +45,7 @@
       830.3149255906893,
       639.4531613962971
     ],
-    "perpoint_relative_time": true,
+    "perpoint_relative_time": false,
     "perpoint_time_scale": 1.0,
     "ring_field": ""
   }

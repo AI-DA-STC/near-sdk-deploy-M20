@@ -1,6 +1,6 @@
-image: ST_hanger_2d.pgm
+image: ST_hanger_v2_2d.pgm
 resolution: 0.05
-origin: [-15.6099, -26.0886, 0.0]
+origin: [-16.5319, -24.2675, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196

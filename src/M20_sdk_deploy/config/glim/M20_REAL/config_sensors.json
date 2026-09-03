@@ -26,21 +26,6 @@
   // distortion_model            : Distortion model
   // distortion_coeffs           : Lens distortion coefficients
   //
-  // --- Transformation format ---
-  // SE3 poses are written in the TUM format [x, y, z, qx, qy, qz, qw]
-  // "T_lidar_imu" transforms points in the "imu" frame into the "lidar" frame
-  // e.g., p_lidar = T_lidar_imu * p_imu, T_world_imu = T_world_lidar * T_lidar_imu
-  //
-  // LiDAR-IMU transformations for typical sensors (Do not trust these values blindly!):
-  // Ouster OS0: [0.006, -0.012, 0.008, 0.0, 0.0, 0.0, 1.0]
-  // Livox Avia: [0, 0, 0, 0, 0, 0, 1]
-  // Realsense L515: [-0.012, 0.016, 0.001, 0, 0, 0, 1]
-  // Azure Kinect: [0.003, 0.004, -0.051, -0.476, 0.474, 0.524, 0.525]
-  // ZED2i: [-0.002, -0.023, 0.000, -0.002, -0.001, -0.002, 1.000]
-  // Newer college: [-0.006, 0.012, 0.029, 0.0, 0.0, 1.0, 0.0]
-  // Newer college multi-cam: [-0.014, 0.012, 0.015, 0.0, 0.0, 0.0, 1.0]
-  // Newer college multi-cam-imu: [0.02300, 0.00400, -0.01100, 1.00000, 0.00000, 0.00000, 0.00000]
-  // rooftop: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
   */
   "sensors": {
     // IMU config
@@ -48,16 +33,9 @@
     "imu_gyro_noise": 0.01,
     "imu_int_noise": 0.001,
     "imu_bias_noise": 1e-5,
-    // LiDAR config
-    // global_shutter_lidar=true ignores per-point times / disables deskew. Safe
-    // at walking speed; the real rsdriver cloud DOES carry an absolute float64
-    // "timestamp" field, so deskew can be enabled later (set false + configure
-    // the per-point time fields) if fast turns smear the map.
-    "global_shutter_lidar": true,
-    // Real M20 geometry (base_link): lidar (0.32028, 0, -0.013), IMU
-    // (0.0632, -0.0268, -0.0435). T_lidar_imu translation = imu_pos - lidar_pos
-    // (zero rotation assumed). VERIFY/refine after the T3 lidar_link ground-plane
-    // check and, ideally, a proper lidar-IMU calibration.
+
+    "global_shutter_lidar": false,
+
     "T_lidar_imu": [
       -0.25708,
       -0.0268,
@@ -70,11 +48,10 @@
     "intensity_field": "intensity",
     "ring_field": "",
     // LiDAR per-point time settings
-    "autoconf_perpoint_times": true,
-    "autoconf_prefer_frame_time": false,
-    "perpoint_relative_time": true,
+    "autoconf_perpoint_times": false,
+    "autoconf_prefer_frame_time": true,
+    "perpoint_relative_time": false,
     "perpoint_time_scale": 1.0,
-    // Camera config (required for only extension modules)
     "global_shutter_camera": true,
     "image_size": [
       752,

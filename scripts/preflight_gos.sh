@@ -44,9 +44,6 @@ else
   if (( FIX )); then
     if sysctl -w net.core.rmem_max=$WANT >/dev/null 2>&1; then
       note "FIXED for this boot."
-      # Persist. --network=host containers share the host's netns, and
-      # net.core.* is global, so this cannot be set from inside a container:
-      # it has to live on the host.
       printf 'net.core.rmem_max = %s\nnet.core.rmem_default = %s\n' \
         "$WANT" 1048576 > /etc/sysctl.d/60-m20-dds.conf \
         && note "Persisted to /etc/sysctl.d/60-m20-dds.conf"
@@ -62,17 +59,6 @@ fi
 
 echo
 echo "== system clock =="
-# WHY: found this host running 21 MONTHS behind the workstation (2024-11 vs
-# 2026-08). phc2sys was copying the NIC's PTP hardware clock into the system
-# clock, and the rslidar was the PTP source — so the LIDAR was setting the
-# robot's date. Every header.stamp the stack produced was in 2024.
-#
-# tf2 tolerates a uniform offset (it compares message stamps to each other), so
-# the robot navigates against itself just fine and the fault hides. What breaks
-# is anything crossing the machine boundary: a /goal_pose or /initialpose sent
-# from RViz on the workstation arrives stamped ~2 years in the future and the
-# transform lookup for it fails or lands nowhere sane. Logs also become
-# impossible to correlate with anything off-robot.
 now=$(date +%s)
 year=$(date +%Y)
 note "system time: $(date -Is)  (epoch $now)"
@@ -83,8 +69,6 @@ if pgrep -x phc2sys >/dev/null 2>&1 || pgrep -x ptp4l >/dev/null 2>&1; then
   note "  sudo systemctl disable --now phc2sys ptp4l"
   fail=1
 fi
-# 1767225600 = 2026-01-01. A clock older than that on this deployment is stale,
-# not merely unsynchronised. Bump this when the guard stops being meaningful.
 if (( now < 1767225600 )); then
   note "STALE: the clock reads $year. Set it from the workstation, then RESTART"
   note "the containers — changing the clock under a running stack leaves"
@@ -100,23 +84,22 @@ fi
 echo
 echo "== what the M20 is publishing (host Foxy/Fast-DDS side) =="
 if command -v ros2 >/dev/null 2>&1; then
-  # Deliberately NOT run inside a container: this is the host's own Foxy stack,
-  # the one m20_bridge has to be able to see (over CycloneDDS).
   topics=$(timeout 10 ros2 topic list 2>/dev/null)
-  for t in /LIDAR/POINTS /IMU; do
+  for t in /LIDAR/POINTS /IMU /ODOM; do
     if grep -qx "$t" <<<"$topics"; then
       note "OK: $t present"
-      # reliability here is what m20_bridge's restamp_* must match; a mismatch
-      # matches nothing and is indistinguishable from a transport fault.
       timeout 10 ros2 topic info -v "$t" 2>/dev/null \
         | grep -iE 'Type|Reliability' | sed 's/^/      /' | head -4
+    elif [[ "$t" == /ODOM ]]; then
+      note "MISSING: $t — check for an OTA rename: 'ros2 topic list | grep -i odom'"
+      fail=1
     else
       note "MISSING: $t — m20_bridge will have nothing to restamp"; fail=1
     fi
   done
 else
   note "SKIP: no ros2 on PATH. Source the host's Foxy setup.bash and re-run,"
-  note "or check by hand that /LIDAR/POINTS and /IMU are being published."
+  note "or check by hand that /LIDAR/POINTS, /IMU and /ODOM are being published."
 fi
 
 echo
